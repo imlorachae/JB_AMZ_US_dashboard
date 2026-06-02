@@ -223,6 +223,24 @@ tr:hover td{background:rgba(29,78,216,.05)}
 
 @media(max-width:1100px){.kpi-grid5{grid-template-columns:repeat(3,1fr)}.charts-grid{grid-template-columns:1fr}}
 @media(max-width:700px){.kpi-grid5{grid-template-columns:repeat(2,1fr)}.ratio-grid{grid-template-columns:repeat(2,1fr)}.quarter-cards{grid-template-columns:repeat(2,1fr)}}
+.dp-wrap{position:relative;display:inline-block;vertical-align:middle}
+.dp-btn{cursor:pointer;padding:5px 10px;border:1px solid var(--border);border-radius:6px;font-size:12px;color:var(--text);background:var(--card);min-width:88px;text-align:center;user-select:none;white-space:nowrap}
+.dp-btn:hover{border-color:var(--accent)}
+.dp-popup{position:absolute;top:calc(100% + 4px);left:0;z-index:9999;background:var(--card);border:1px solid var(--border);border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.15);padding:10px;width:230px}
+.dp-nav{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px}
+.dp-nav-btn{background:none;border:none;cursor:pointer;font-size:18px;color:var(--text);padding:2px 8px;border-radius:4px;line-height:1}
+.dp-nav-btn:hover{background:var(--card2)}
+.dp-nav-lbl{font-size:12px;font-weight:700;color:var(--text)}
+.dp-dow{display:grid;grid-template-columns:repeat(7,1fr);gap:1px;margin-bottom:3px}
+.dp-dow span{text-align:center;font-size:10px;color:var(--muted);font-weight:600;padding:2px 0}
+.dp-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:2px}
+.dp-day{text-align:center;font-size:11px;padding:5px 1px;border-radius:5px;cursor:pointer;color:var(--text)}
+.dp-day:hover{background:var(--card2)}
+.dp-sel{background:var(--accent)!important;color:#fff!important;font-weight:700}
+.dp-today{font-weight:700;color:var(--accent)}
+.dp-sel.dp-today{color:#fff}
+.dp-other{color:var(--muted);opacity:.4}
+.dp-empty{pointer-events:none}
 </style>
 </head>
 <body>
@@ -291,9 +309,9 @@ tr:hover td{background:rgba(29,78,216,.05)}
       </div>
       <div class="navbar-right">
         <label id="rng-lbl">기간</label>
-        <input type="date" id="rng-from">
+        <div id="rng-from-mount"></div>
         <span style="color:var(--muted);font-size:11px">~</span>
-        <input type="date" id="rng-to">
+        <div id="rng-to-mount"></div>
         <button class="mini-btn" id="rng-apply" onclick="applyRange()">적용</button>
         <button class="mini-btn ghost" id="rng-reset" onclick="resetRange()">초기화</button>
       </div>
@@ -410,6 +428,18 @@ const fmtN=n=>Math.round(n||0).toLocaleString('en-US');
 const fmtRoas=n=>((n||0)*100).toFixed(0)+'%';
 const fmtAcos=n=>Math.round(n||0).toString();
 const toN=v=>{if(v===''||v==null)return 0;const n=parseFloat(String(v).replace(/[$,₩S%x]/g,''));return isNaN(n)?0:n;};
+
+// ──── DATEPICKER ───────────────────────────────────────────────────
+const _dp={};
+const _dpMN=['January','February','March','April','May','June','July','August','September','October','November','December'];
+function dpHtml(id,val){const v=val||'';return '<div class="dp-wrap" id="dpw-'+id+'"><input type="hidden" id="'+id+'" value="'+v+'"><div class="dp-btn" id="dpb-'+id+'" onclick="dpOpen(\''+id+'\')">'+( v||'—')+'</div><div class="dp-popup" id="dpp-'+id+'" style="display:none"><div class="dp-nav"><button class="dp-nav-btn" onclick="event.stopPropagation();dpNav(\''+id+'\',-1)">‹</button><span class="dp-nav-lbl" id="dpt-'+id+'"></span><button class="dp-nav-btn" onclick="event.stopPropagation();dpNav(\''+id+'\',1)">›</button></div><div class="dp-dow"><span>Su</span><span>Mo</span><span>Tu</span><span>We</span><span>Th</span><span>Fr</span><span>Sa</span></div><div class="dp-grid" id="dpg-'+id+'"></div></div></div>';}
+function dpInit(id,val){const d=val?new Date(val+'T00:00:00'):new Date();_dp[id]={y:d.getFullYear(),m:d.getMonth(),sel:val||null};dpRender(id);}
+function dpOpen(id){const pp=document.getElementById('dpp-'+id);const isOpen=pp&&pp.style.display!=='none';document.querySelectorAll('.dp-popup').forEach(p=>p.style.display='none');if(!isOpen&&pp){if(!_dp[id]){const v=document.getElementById(id).value;dpInit(id,v||null);}dpRender(id);pp.style.display='block';}}
+function dpNav(id,dir){const s=_dp[id];s.m+=dir;if(s.m>11){s.m=0;s.y++;}else if(s.m<0){s.m=11;s.y--;}dpRender(id);}
+function dpRender(id){const s=_dp[id];if(!s)return;const el=document.getElementById('dpt-'+id);if(!el)return;el.textContent=_dpMN[s.m]+' '+s.y;const first=new Date(s.y,s.m,1).getDay();const days=new Date(s.y,s.m+1,0).getDate();const today=new Date();let h='';for(let i=0;i<first;i++)h+='<div class="dp-day dp-empty"></div>';for(let d=1;d<=days;d++){const ds=s.y+'-'+String(s.m+1).padStart(2,'0')+'-'+String(d).padStart(2,'0');const cls=(s.sel===ds?' dp-sel':'')+(today.getFullYear()===s.y&&today.getMonth()===s.m&&today.getDate()===d?' dp-today':'');h+='<div class="dp-day'+cls+'" onclick="event.stopPropagation();dpSelect(\''+id+'\',\''+ds+'\')">'+(d)+'</div>';}document.getElementById('dpg-'+id).innerHTML=h;}
+function dpSelect(id,ds){if(!_dp[id])return;_dp[id].sel=ds;const hi=document.getElementById(id);if(hi)hi.value=ds;const bt=document.getElementById('dpb-'+id);if(bt)bt.textContent=ds;const pp=document.getElementById('dpp-'+id);if(pp)pp.style.display='none';dpRender(id);}
+function dpSetVal(id,val){if(!document.getElementById('dpw-'+id))return;if(!_dp[id])dpInit(id,val);_dp[id].sel=val;if(val){const d=new Date(val+'T00:00:00');_dp[id].y=d.getFullYear();_dp[id].m=d.getMonth();}const hi=document.getElementById(id);if(hi)hi.value=val||'';const bt=document.getElementById('dpb-'+id);if(bt)bt.textContent=val||'—';dpRender(id);}
+document.addEventListener('click',()=>document.querySelectorAll('.dp-popup').forEach(p=>p.style.display='none'));
 
 // ──── HELPERS ──────────────────────────────────────────────────────
 function isConfirmed(yr,mo){ const now=new Date(); const end=new Date(yr,mo,0); return (now-end)/86400000>2; }
@@ -623,8 +653,8 @@ function applyI18nStatic(){
   document.getElementById('ct-line').textContent=T('line');
   document.getElementById('ct-mix').textContent=T('mix');
   document.getElementById('donut-title').textContent=T('adVsOrg');
-  document.getElementById('rng-from').value=rangeFrom;
-  document.getElementById('rng-to').value=rangeTo;
+  if(!document.getElementById('dpw-rng-from')){document.getElementById('rng-from-mount').innerHTML=dpHtml('rng-from',rangeFrom);dpInit('rng-from',rangeFrom);}else{dpSetVal('rng-from',rangeFrom);}
+  if(!document.getElementById('dpw-rng-to')){document.getElementById('rng-to-mount').innerHTML=dpHtml('rng-to',rangeTo);dpInit('rng-to',rangeTo);}else{dpSetVal('rng-to',rangeTo);}
   // upload screen
   document.getElementById('upl-sub').textContent=T('uplSub');
   document.getElementById('upl-btn').textContent=T('uplBtn');
@@ -685,7 +715,7 @@ function resetRange(){
   const s=allData.slice().sort((a,b)=>new Date(a.yr,a.mo-1,a.day)-new Date(b.yr,b.mo-1,b.day));
   rangeFrom=`${s[0].yr}-${String(s[0].mo).padStart(2,'0')}-${String(s[0].day).padStart(2,'0')}`;
   const l=s[s.length-1]; rangeTo=`${l.yr}-${String(l.mo).padStart(2,'0')}-${String(l.day).padStart(2,'0')}`;
-  document.getElementById('rng-from').value=rangeFrom; document.getElementById('rng-to').value=rangeTo;
+  dpSetVal('rng-from',rangeFrom); dpSetVal('rng-to',rangeTo);
   render();
 }
 
@@ -1552,14 +1582,17 @@ function renderAds(){
       '<div style="display:flex;gap:4px">'+quickBtn(7)+quickBtn(14)+quickBtn(30)+'</div>'+
       '<div style="width:1px;height:22px;background:var(--border)"></div>'+
       '<div style="display:flex;gap:6px;align-items:center">'+
-        '<input type="date" id="ads-from" value="'+(adsFrom||isoD(from))+'" style="padding:5px 8px;border:1px solid var(--border);border-radius:6px;font-size:12px;color:var(--text);background:var(--card)">'+
+        '<div id="ads-from-mount"></div>'+
         '<span style="color:var(--muted);font-size:11px">~</span>'+
-        '<input type="date" id="ads-to" value="'+(adsTo||isoD(to))+'" style="padding:5px 8px;border:1px solid var(--border);border-radius:6px;font-size:12px;color:var(--text);background:var(--card)">'+
+        '<div id="ads-to-mount"></div>'+
         '<button class="mini-btn" onclick="setAdsRange()">'+(isKo()?'적용':'Apply')+'</button>'+
         (adsFrom?'<button class="mini-btn ghost" onclick="clearAdsRange()">'+(isKo()?'해제':'Clear')+'</button>':'')+
       '</div>'+
       '<div style="margin-left:auto;font-size:12px;color:var(--muted)">'+(isKo()?'기간':'Period')+': <strong style="color:var(--text)">'+fmtD(from)+' ~ '+fmtD(to)+'</strong> ('+rows.length+(isKo()?'일':'d')+')</div>'+
     '</div>';
+  const _af=adsFrom||isoD(from), _at=adsTo||isoD(to);
+  document.getElementById('ads-from-mount').innerHTML=dpHtml('ads-from',_af); dpInit('ads-from',_af);
+  document.getElementById('ads-to-mount').innerHTML=dpHtml('ads-to',_at); dpInit('ads-to',_at);
 
   // ── KPI 3행 (항목5) ──
   const kpiColor={adSpend:'#ef4444',adSales:'#22c55e',organic:'#06b6d4',totalSales:'#3b82f6',roas:'#3b82f6',acos:'#f97316',troas:'#8b5cf6',tacos:'#ec4899',impr:'#64748b',cpm:'#0891b2',clicks:'#0ea5e9',ctr:'#14b8a6',cpc:'#f59e0b',adOrders:'#a855f7',cvr:'#10b981',cpa:'#ef4444'};
