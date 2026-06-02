@@ -310,6 +310,7 @@ tr:hover td{background:rgba(29,78,216,.05)}
           <div class="chart-type-toggle">
             <button class="ct-btn active" id="ct-bar" onclick="setChartType('bar')"></button>
             <button class="ct-btn" id="ct-line" onclick="setChartType('line')"></button>
+            <button class="ct-btn" id="ct-mix" onclick="setChartType('mix')"></button>
           </div>
         </div>
         <div id="mainChart-wrap" style="position:relative;height:360px"><canvas id="mainChart"></canvas></div>
@@ -355,9 +356,9 @@ const STR={
   bar:['막대','Bar'], line:['선형','Line'],
   totalSales:['총 매출','Total Sales'], adSales:['광고 매출','Ad Sales'], organic:['오가닉 매출','Organic'],
   orders:['오더 건수','Orders'], items:['오더 아이템','Order Items'], adSpend:['광고비','Ad Spend'],
-  roas:['ROAS','ROAS'], acos:['ACoS','ACoS'], troas:['토탈 ROAS','Total ROAS'], tacos:['TACOS','TACOS'],
-  roasSub:['광고매출÷광고비','Ad Sales ÷ Ad Spend'], acosSub:['광고비÷광고매출','Ad Spend ÷ Ad Sales'],
-  troasSub:['총매출÷광고비','Total ÷ Ad Spend'], tacosSub:['광고비÷총매출','Ad Spend ÷ Total'],
+  roas:['Total ROAS','Total ROAS'], acos:['Total ACoS','Total ACoS'], troas:['Ad ROAS','Ad ROAS'], tacos:['Ad ACoS','Ad ACoS'],
+  roasSub:['총매출÷광고비','Total Sales ÷ Ad Spend'], acosSub:['광고비÷총매출','Ad Spend ÷ Total Sales'],
+  troasSub:['광고매출÷광고비','Ad Sales ÷ Ad Spend'], tacosSub:['광고비÷광고매출','Ad Spend ÷ Ad Sales'],
   confirmed:['확정','Confirmed'], projected:['예상','Projected'], inProgress:['진행중','In Progress'],
   confSales:['매출','Sales'], projSales:['예상 매출','Projected Sales'], curSales:['현재 매출','Current Sales'],
   vsPrev:['vs 전기','vs prev'], noData:['데이터 없음','No data'],
@@ -620,6 +621,7 @@ function applyI18nStatic(){
   document.getElementById('rng-reset').textContent=T('reset');
   document.getElementById('ct-bar').textContent=T('bar');
   document.getElementById('ct-line').textContent=T('line');
+  document.getElementById('ct-mix').textContent=T('mix');
   document.getElementById('donut-title').textContent=T('adVsOrg');
   document.getElementById('rng-from').value=rangeFrom;
   document.getElementById('rng-to').value=rangeTo;
@@ -692,7 +694,7 @@ function setMode(m){ appMode=m; activeTab = m==='sales'?'weekly':'overview'; app
 function setTab(t){ activeTab=t; applyI18nStatic(); render(); }
 function setCurrency(c,btn){ activeCurrency=c; document.querySelectorAll('.cur-btn').forEach(b=>b.classList.remove('active')); btn.classList.add('active'); applyI18nStatic(); render(); }
 function setVineMode(m){ vineMode=m; document.getElementById('vine-inc').classList.toggle('active',m==='include'); document.getElementById('vine-exc').classList.toggle('active',m==='exclude'); render(); }
-function setChartType(t){ chartType=t; document.getElementById('ct-bar').classList.toggle('active',t==='bar'); document.getElementById('ct-line').classList.toggle('active',t==='line'); render(); }
+function setChartType(t){ chartType=t; document.getElementById('ct-bar').classList.toggle('active',t==='bar'); document.getElementById('ct-line').classList.toggle('active',t==='line'); document.getElementById('ct-mix').classList.toggle('active',t==='mix'); render(); }
 
 // ──── MAIN RENDER ──────────────────────────────────────────────────
 function render(){
@@ -740,15 +742,15 @@ function renderKPIs(cT,pT){
 
 }
 function renderRatios(cT){
-  const roas=cT.adSpend>0?cT.adSales/cT.adSpend:0, acos=cT.adSales>0?cT.adSpend/cT.adSales*100:0;
+  const adRoas=cT.adSpend>0?cT.adSales/cT.adSpend:0, adAcos=cT.adSales>0?cT.adSpend/cT.adSales*100:0;
   const tr=cT.adSpend>0?cT.sales/cT.adSpend:0, tc=cT.sales>0?cT.adSpend/cT.sales*100:0;
   const r=avgRate(cT);
   const cards=[
     {lb:'📢 '+T('adSpend'),val:fmtAgg(cT.adSpend,r.krw,r.sgd),sub:T('adSpend')},
-    {lb:'🎯 '+T('roas'),val:fmtRoas(roas),sub:T('roasSub')},
-    {lb:'📉 '+T('acos'),val:fmtAcos(acos),sub:T('acosSub')},
-    {lb:'🚀 '+T('troas'),val:fmtRoas(tr),sub:T('troasSub')},
-    {lb:'⚡ '+T('tacos'),val:fmtAcos(tc),sub:T('tacosSub')},
+    {lb:'🎯 '+T('roas'),val:fmtRoas(tr),sub:T('roasSub')},
+    {lb:'📉 '+T('acos'),val:fmtAcos(tc),sub:T('acosSub')},
+    {lb:'📊 '+T('troas'),val:fmtRoas(adRoas),sub:T('troasSub')},
+    {lb:'📈 '+T('tacos'),val:fmtAcos(adAcos),sub:T('tacosSub')},
   ];
   document.getElementById('ratio-grid').innerHTML=cards.map(c=>`<div class="ratio-card"><div class="ratio-lbl">${c.lb}</div><div class="ratio-val">${c.val}</div><div class="ratio-sub">${c.sub}</div></div>`).join('');
 }
@@ -1034,16 +1036,23 @@ function renderTrendChartRaw(labels,salesD,adD,orgD,title,sortedRows,adSpD){
 }
 function drawChart(labels,salesD,adD,orgD,adSpD,sortedRows){
   if(mainCI)mainCI.destroy();
-  const isBar=chartType==='bar';
+  const isBar=chartType==='bar', isMix=chartType==='mix';
   const ptC=sortedRows?sortedRows.map(r=>{if(SPECIAL_EVENTS.some(e=>r.yr===e.yr&&r.mo===e.mo&&r.day>=e.day_start&&r.day<=e.day_end))return'#fb923c';if(vineMode==='exclude'&&(r.vine_adj||0)<0)return'#ef4444';return'#3b82f6'}):null;
   const ptS=sortedRows?sortedRows.map(r=>{if(SPECIAL_EVENTS.some(e=>r.yr===e.yr&&r.mo===e.mo&&r.day>=e.day_start&&r.day<=e.day_end))return 6;if(vineMode==='exclude'&&(r.vine_adj||0)<0)return 7;return 3}):null;
+  const barBg=k=>({bar:'rgba('+k+',.7)',mix:'rgba('+k+',.7)',line:'rgba('+k+',.12)'})[chartType]||'rgba('+k+',.7)';
   const ds=[
-    {label:T('totalSales'),data:salesD,borderColor:'#3b82f6',backgroundColor:isBar?'rgba(59,130,246,.7)':'rgba(59,130,246,.12)',fill:!isBar,tension:.4,borderWidth:2,pointRadius:ptS||3,pointBackgroundColor:ptC||'#3b82f6',borderRadius:isBar?4:0},
-    {label:T('adSales'),data:adD,borderColor:'#22c55e',backgroundColor:isBar?'rgba(34,197,94,.7)':'rgba(34,197,94,.08)',fill:false,tension:.4,borderWidth:2,pointRadius:3,borderRadius:isBar?4:0},
-    {label:T('organic'),data:orgD,borderColor:'#fbbf24',backgroundColor:isBar?'rgba(251,191,36,.7)':'rgba(251,191,36,.08)',fill:false,tension:.4,borderWidth:2,pointRadius:3,borderRadius:isBar?4:0},
+    {label:T('totalSales'),data:salesD,borderColor:'#3b82f6',backgroundColor:barBg('59,130,246'),fill:false,tension:.4,borderWidth:2,pointRadius:ptS||3,pointBackgroundColor:ptC||'#3b82f6',borderRadius:(isBar||isMix)?4:0},
+    {label:T('adSales'),data:adD,borderColor:'#22c55e',backgroundColor:barBg('34,197,94'),fill:false,tension:.4,borderWidth:2,pointRadius:3,borderRadius:(isBar||isMix)?4:0},
+    {label:T('organic'),data:orgD,borderColor:'#fbbf24',backgroundColor:barBg('251,191,36'),fill:false,tension:.4,borderWidth:2,pointRadius:3,borderRadius:(isBar||isMix)?4:0},
   ];
-  if(adSpD){ds.push({label:T('adSpend'),data:adSpD,borderColor:'#ef4444',backgroundColor:isBar?'rgba(239,68,68,.7)':'rgba(239,68,68,.08)',fill:false,tension:.4,borderWidth:2,pointRadius:3,borderDash:isBar?[]:[6,3],borderRadius:isBar?4:0});}
-  mainCI=new Chart(document.getElementById('mainChart').getContext('2d'),{type:isBar?'bar':'line',data:{labels,datasets:ds},options:chartOpts()});
+  if(adSpD){
+    const spDs={label:T('adSpend'),data:adSpD,borderColor:'#ef4444',backgroundColor:'rgba(239,68,68,.08)',fill:false,tension:.4,borderWidth:2,pointRadius:3,borderDash:isBar?[]:[6,3]};
+    if(isMix){spDs.type='line';spDs.yAxisID='y2';}else{spDs.backgroundColor=barBg('239,68,68');spDs.borderRadius=isBar?4:0;}
+    ds.push(spDs);
+  }
+  const opts=chartOpts();
+  if(isMix&&adSpD){opts.scales=opts.scales||{};opts.scales.y2={position:'right',title:{display:true,text:isKo()?'광고비':'Ad Spend',color:'#94a3b8',font:{size:10}},ticks:{color:'#ef4444'},grid:{drawOnChartArea:false}};}
+  mainCI=new Chart(document.getElementById('mainChart').getContext('2d'),{type:(isBar||isMix)?'bar':'line',data:{labels,datasets:ds},options:opts});
 }
 function renderDonut(cT,rate){
   if(donutCI)donutCI.destroy();
@@ -1559,7 +1568,7 @@ function renderAds(){
     ['roas','acos','troas','tacos'],
     ['impr','cpm','clicks','ctr','cpc','adOrders','cvr','cpa'],
   ];
-  const card=k=>'<div class="kpi-card" style="--kc:'+kpiColor[k]+'"><div class="kpi-lbl">'+mLabel(k)+'</div><div class="kpi-val" style="font-size:16px">'+fmtMetric(k,ADS_METRICS[k].c(T0),rate)+'</div></div>';
+  const card=k=>'<div class="kpi-card" style="--kc:'+kpiColor[k]+'"><div class="kpi-lbl">'+mLabel(k)+'</div><div class="kpi-val">'+fmtMetric(k,ADS_METRICS[k].c(T0),rate)+'</div></div>';
   kr.innerHTML=ADS_ROWS.map((row,i)=>{
     const cols=i<2?4:8;
     const sep=i>0?'border-top:1px solid var(--border);padding-top:8px;margin-top:4px;':'';
