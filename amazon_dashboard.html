@@ -381,6 +381,7 @@ const STR={
   confSales:['매출','Sales'], projSales:['예상 매출','Projected Sales'], curSales:['현재 매출','Current Sales'],
   vsPrev:['vs 전기','vs prev'], noData:['데이터 없음','No data'],
   projMonth:['이번 달 예상 매출 (캘리포니아 -2일 기준)','Projected Monthly Sales (CA -2 days)'],
+  projWeek:['이번 주 예상 매출','Projected Weekly Sales'],
   confMonthTitle:['확정 매출','Confirmed Sales'], annualProj:['연간 예상 매출 (일평균×365)','Annual Projection (daily avg×365)'],
   dailyAvg:['일 평균','Daily avg'], days:['일','d'], confDays:['확정','Confirmed'], totalDays:['총','Total'],
   adVsOrg:['🥧 광고 vs 오가닉','🥧 Ad vs Organic'],
@@ -721,7 +722,7 @@ function resetRange(){
 
 // ──── CONTROLS ─────────────────────────────────────────────────────
 function setMode(m){ appMode=m; activeTab = m==='sales'?'weekly':'overview'; applyI18nStatic(); render(); }
-function setTab(t){ activeTab=t; applyI18nStatic(); render(); }
+function setTab(t){ activeTab=t; if(t==='weekly'&&activeMonth==='all'){activeMonth=monthKeys[monthKeys.length-1];} applyI18nStatic(); render(); }
 function setCurrency(c,btn){ activeCurrency=c; document.querySelectorAll('.cur-btn').forEach(b=>b.classList.remove('active')); btn.classList.add('active'); applyI18nStatic(); render(); }
 function setVineMode(m){ vineMode=m; document.getElementById('vine-inc').classList.toggle('active',m==='include'); document.getElementById('vine-exc').classList.toggle('active',m==='exclude'); render(); }
 function setChartType(t){ chartType=t; document.getElementById('ct-bar').classList.toggle('active',t==='bar'); document.getElementById('ct-line').classList.toggle('active',t==='line'); document.getElementById('ct-mix').classList.toggle('active',t==='mix'); render(); }
@@ -909,7 +910,7 @@ function renderMonthly(){
   renderTrendChart(mData.map(k=>mNameS(byMonth[k].mo)),mData.map(k=>agg(byMonth[k].rows.filter(inRange))),T('monthlyTrend'));
   renderDonut(cT,rate);
   const _revHtml=renderMonthlyReviewCard(cur.yr,cur.mo,cT,rate);
-  document.getElementById('summary-section').innerHTML=`<div class="section-title">${T('monthlySummary')}</div>`+monthSummaryHTML(mData,rate)+_revHtml;
+  document.getElementById('summary-section').innerHTML=`<div class="section-title">${T('monthlySummary')}</div>`+_revHtml+monthSummaryHTML(mData,rate);
 }
 
 // shared month summary (item 2: confirmed/projected columns)
@@ -947,10 +948,7 @@ function renderWeekly(){
   }
   const cT=scopeRows.length?agg(scopeRows):emptyT(); const rate=avgRate(cT);
   document.getElementById('topbar-badge').textContent=(activeMonth==='all'?T('allWeeks'):ymName(byMonth[activeMonth].yr,byMonth[activeMonth].mo))+' '+T('weekly');
-  // banner: latest month
-  const lk=monthKeys[monthKeys.length-1],lm=byMonth[lk];const lr=lm.rows.filter(inRange);const lT=lr.length?agg(lr):emptyT();
-  const dim2=new Date(lm.yr,lm.mo,0).getDate();const cd=Math.max(1,lr.length-2);const proj=lT.sales/cd*dim2;
-  renderBanner(lm,lT,avgRate(lT),cd,dim2,proj);
+  renderWeeklyBanner(rate);
   renderKPIs(cT,null); renderRatios(cT);
   renderTrendChart(weeks.map(w=>w.label),weeks.map(w=>w.t),T('weeklyTrend'));
   renderDonut(cT,rate);
@@ -1051,6 +1049,59 @@ function renderBanner(cur,cT,rate,cd,dim,proj){
   } else {
     document.getElementById('top-banner').innerHTML=`<div class="banner-projected"><div><div class="banner-label">🎯 ${T('projMonth')}</div><div class="banner-value">${fmtAgg(proj,rate.krw,rate.sgd)}</div><div class="banner-meta">${T('dailyAvg')} ${fmtAgg(cT.sales/cd,rate.krw,rate.sgd)} × ${dim}${T('days')}</div>${vine}</div><div class="banner-right"><div class="banner-month">${ymName(cur.yr,cur.mo)}</div><div class="banner-days">${T('confDays')} ${cd} / ${T('totalDays')} ${dim}</div></div></div>`;
   }
+}
+
+// ──── WEEKLY PROJECTION ────────────────────────────────────────────
+function calcWeeklyProjection(){
+  const sorted=allData.slice().sort((a,b)=>new Date(a.yr,a.mo-1,a.day)-new Date(b.yr,b.mo-1,b.day));
+  if(!sorted.length)return null;
+  // Last 3 weeks = last 21 calendar days that have any activity
+  const active=sorted.filter(r=>r.sales>0||r.adSpend>0||r.sessions>0);
+  const last21=active.slice(-21);
+  if(!last21.length)return null;
+  // DOW averages from last 21 days
+  const dowS=[0,0,0,0,0,0,0],dowN=[0,0,0,0,0,0,0];
+  last21.forEach(r=>{const d=new Date(r.yr,r.mo-1,r.day).getDay();dowS[d]+=r.sales;dowN[d]++;});
+  const dowAvg=dowS.map((s,i)=>dowN[i]>0?s/dowN[i]:0);
+  const last21Avg=last21.reduce((s,r)=>s+r.sales,0)/last21.length;
+  const dowMult=dowAvg.map(v=>last21Avg>0?v/last21Avg:1);
+  // Previous month daily avg
+  const today=new Date();
+  const prevMoNum=today.getMonth()===0?12:today.getMonth(); // getMonth() is 0-indexed, so Jan=0 means prev=Dec(12)
+  const prevMoYr=today.getMonth()===0?today.getFullYear()-1:today.getFullYear();
+  const prevKey=prevMoYr+'_'+String(prevMoNum).padStart(2,'0');
+  const prevRows=(byMonth[prevKey]?.rows||[]);
+  const prevT=prevRows.length?agg(prevRows):null;
+  const prevDailyAvg=prevT&&prevRows.length>0?prevT.sales/prevRows.length:last21Avg;
+  // Base = blend of prev month daily avg and last-21 daily avg
+  const base=(prevDailyAvg+last21Avg)/2;
+  // Current week (Sun~Sat containing today)
+  const todayMidnight=new Date(today.getFullYear(),today.getMonth(),today.getDate());
+  const wSun=new Date(todayMidnight);wSun.setDate(todayMidnight.getDate()-todayMidnight.getDay());
+  let projTotal=0,actualTotal=0,projDays=0;
+  const dayRows=[];
+  for(let i=0;i<7;i++){
+    const d=new Date(wSun);d.setDate(wSun.getDate()+i);
+    const actual=allData.find(r=>r.yr===d.getFullYear()&&r.mo===d.getMonth()+1&&r.day===d.getDate());
+    const dow=d.getDay();
+    const est=Math.max(0,base*dowMult[dow]);
+    if(actual){actualTotal+=actual.sales;projTotal+=actual.sales;}
+    else{projTotal+=est;projDays++;}
+    dayRows.push({d,dow,actual,est});
+  }
+  return{proj:projTotal,actualTotal,projDays,base,prevDailyAvg,last21Avg,dowMult,dayRows,wSun,prevMoNum,prevMoYr};
+}
+function renderWeeklyBanner(rate){
+  const wp=calcWeeklyProjection();
+  if(!wp){document.getElementById('top-banner').innerHTML='';return;}
+  const sym=activeCurrency==='KRW'?'₩':activeCurrency==='SGD'?'S$':'$';
+  const cr=getRate(wp.prevMoYr,wp.prevMoNum);
+  const fmt=v=>activeCurrency==='USD'?sym+v.toFixed(0):activeCurrency==='KRW'?'₩'+Math.round(v*cr).toLocaleString():'S$'+( v*1.34).toFixed(0);
+  const wEnd=new Date(wp.wSun);wEnd.setDate(wp.wSun.getDate()+6);
+  const wLabel=`${wp.wSun.getMonth()+1}/${wp.wSun.getDate()}~${wEnd.getMonth()+1}/${wEnd.getDate()}`;
+  const metaKo=`직전달 일평균 ${fmt(wp.prevDailyAvg)} · 최근3주 ${fmt(wp.last21Avg)} · 요일패턴 반영`;
+  const metaEn=`Prev mo avg ${fmt(wp.prevDailyAvg)} · Last 3wk avg ${fmt(wp.last21Avg)} · DOW pattern`;
+  document.getElementById('top-banner').innerHTML=`<div class="banner-projected"><div><div class="banner-label">🗓️ ${T('projWeek')}</div><div class="banner-value">${fmt(wp.proj)}</div><div class="banner-meta">${isKo()?metaKo:metaEn}</div></div><div class="banner-right"><div class="banner-month">${wLabel}</div><div class="banner-days">${isKo()?'확정':'Actual'} ${fmt(wp.actualTotal)} / ${isKo()?'예측':'Est'} ${wp.projDays}${isKo()?'일':'d'}</div></div></div>`;
 }
 
 // ──── CHARTS ───────────────────────────────────────────────────────
