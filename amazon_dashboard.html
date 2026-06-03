@@ -334,6 +334,7 @@ tr:hover td{background:rgba(29,78,216,.05)}
       </div>
     </div>
 
+    <div id="week-nav-bar" style="display:none"></div>
     <div id="review-section"></div>
     <div id="top-banner"></div>
     <div class="kpi-grid5" id="kpi-row1"></div>
@@ -730,7 +731,7 @@ function selectYear(y){
 function navStep(dir){}
 function selectYear(y){ activeYear=y; render(); }
 function selectQuarter(q){ activeQuarter=q; render(); }
-function selectMonth(k){ activeMonth=k; render(); }
+function selectMonth(k){ activeMonth=k; activeWeekIdx=null; render(); }
 function applyRange(){ rangeFrom=document.getElementById('rng-from').value; rangeTo=document.getElementById('rng-to').value; render(); }
 function resetRange(){
   const s=allData.slice().sort((a,b)=>new Date(a.yr,a.mo-1,a.day)-new Date(b.yr,b.mo-1,b.day));
@@ -807,8 +808,9 @@ function renderRatios(cT){
 }
 
 // ──── ANNUAL ───────────────────────────────────────────────────────
+function _hideWeekNav(){const nb=document.getElementById('week-nav-bar');if(nb)nb.style.display='none';}
 function renderAnnual(){
-  const _rs=document.getElementById('review-section');if(_rs)_rs.innerHTML='';
+  const _rs=document.getElementById('review-section');if(_rs)_rs.innerHTML='';_hideWeekNav();
   const yr=activeYear;
   const yRows=rangedData().filter(d=>d.yr===yr);
   const yT=yRows.length?agg(yRows):emptyT();
@@ -832,7 +834,7 @@ function renderAnnual(){
 
 // ──── QUARTER (item 3 drilldown) ───────────────────────────────────
 function renderQuarter(){
-  const _rs=document.getElementById('review-section');if(_rs)_rs.innerHTML='';
+  const _rs=document.getElementById('review-section');if(_rs)_rs.innerHTML='';_hideWeekNav();
   const yr=activeYear;
   const quarters=[1,2,3,4].map(q=>{
     const mos=[1+(q-1)*3,2+(q-1)*3,3+(q-1)*3];
@@ -1198,6 +1200,7 @@ function renderMonthly(){
   const mData=monthKeys.filter(k=>byMonth[k].yr===yr);
   renderTrendChart(mData.map(k=>mNameS(byMonth[k].mo)),mData.map(k=>agg(byMonth[k].rows.filter(inRange))),T('monthlyTrend'));
   renderDonut(cT,rate);
+  _hideWeekNav();
   renderMonthlyReview(cur.yr,cur.mo,cT,rate);
   document.getElementById('summary-section').innerHTML=`<div class="section-title">${T('monthlySummary')}</div>`+monthSummaryHTML(mData,rate);
 }
@@ -1225,33 +1228,64 @@ function renderMonthSummary(mData,title,rate){
 }
 
 // ──── WEEKLY (item 5: vertical) ────────────────────────────────────
+function _weekKey(w){
+  const fr=w.rows?.[0];if(!fr)return'';
+  const d=new Date(fr.yr,fr.mo-1,fr.day);d.setDate(d.getDate()-d.getDay());
+  return`wr_${d.getFullYear()}_${String(d.getMonth()+1).padStart(2,'0')}_${String(d.getDate()).padStart(2,'0')}`;
+}
+function renderWeekNavBar(weeks,localIdx){
+  const nb=document.getElementById('week-nav-bar');if(!nb)return;
+  nb.style.display='block';
+  if(!weeks.length){nb.innerHTML='';return;}
+  const gw=buildGlobalWeeks();
+  const curIdx=activeWeekIdx??getThisWeekIdx();
+  const isThis=curIdx===getThisWeekIdx();
+  const atStart=curIdx<=0,atEnd=curIdx>=gw.length-1;
+  const btn=(lbl,dir,dis)=>`<button onclick="${dis?'':'navWeek('+dir+')'}" style="padding:5px 14px;border:1px solid var(--border);border-radius:7px;font-size:12px;font-weight:600;cursor:${dis?'default':'pointer'};background:var(--card);color:${dis?'var(--muted)':'var(--text)'};opacity:${dis?'0.4':'1'}">${lbl}</button>`;
+  const thisBtn=`<button onclick="navWeek(0)" style="padding:5px 14px;border:1px solid ${isThis?'var(--accent)':'var(--border)'};border-radius:7px;font-size:12px;font-weight:700;cursor:pointer;background:${isThis?'var(--accent)':'var(--card)'};color:${isThis?'#fff':'var(--text)'}">${isKo()?'이번 주':'This Week'}</button>`;
+  const focusLabel=weeks[localIdx]?.label||'';
+  nb.innerHTML=`<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:8px 14px;background:var(--card);border:1px solid var(--border);border-radius:10px;margin-bottom:6px">${btn(isKo()?'◀ 이전 주':'◀ Prev',-1,atStart)}${thisBtn}${btn(isKo()?'다음 주 ▶':'Next ▶',1,atEnd)}<span style="font-size:12px;font-weight:600;color:var(--text);margin-left:4px">📅 ${focusLabel}</span><button onclick="activeWeekIdx=null;render()" style="margin-left:auto;padding:5px 12px;border:1px solid var(--border);border-radius:7px;font-size:11px;cursor:pointer;background:var(--card);color:var(--muted)">${isKo()?'전체 보기':'All Weeks'}</button></div>`;
+}
 function renderWeekly(){
+  // ① 테이블은 항상 선택된 scope의 전체 주차 표시 (activeWeekIdx가 필터 역할 안 함)
   let weeks, scopeRows;
-  if(activeWeekIdx!==null){
-    const gw=buildGlobalWeeks();
-    const w=gw[activeWeekIdx];
-    if(w){scopeRows=w.rows;weeks=[{...w}];}else{scopeRows=[];weeks=[];}
-  } else if(activeMonth==='all'){
-    scopeRows=rangedData();
-    weeks=getAllWeeks(scopeRows);
+  if(activeMonth==='all'){
+    scopeRows=allData; // 날짜 필터 없이 전체
+    weeks=getAllWeeks(allData);
   } else {
-    const cur=byMonth[activeMonth]; scopeRows=cur.rows.filter(inRange);
+    const cur=byMonth[activeMonth];
+    scopeRows=cur.rows;
     const dim=new Date(cur.yr,cur.mo,0).getDate();
-    weeks=buildMonthWeeks(scopeRows.slice().sort((a,b)=>a.day-b.day),dim,cur);
+    weeks=buildMonthWeeks(cur.rows.slice().sort((a,b)=>a.day-b.day),dim,cur);
   }
   const cT=scopeRows.length?agg(scopeRows):emptyT(); const rate=avgRate(cT);
   document.getElementById('topbar-badge').textContent=(activeMonth==='all'?T('allWeeks'):ymName(byMonth[activeMonth].yr,byMonth[activeMonth].mo))+' '+T('weekly');
+
+  // ② 리뷰 포커스 주 결정 (activeWeekIdx 또는 기본=마지막 주)
+  let localIdx=weeks.length-1;
+  if(activeWeekIdx!==null){
+    const gw=buildGlobalWeeks();
+    const gwk=gw[activeWeekIdx]?.key;
+    if(gwk){const fi=weeks.findIndex(w=>_weekKey(w)===gwk);if(fi>=0)localIdx=fi;}
+  }
+  const focusedWeek=weeks[localIdx]||null;
+
+  renderWeekNavBar(weeks,localIdx);
   renderWeeklyBanner(rate);
   renderKPIs(cT,null); renderRatios(cT);
   renderTrendChart(weeks.map(w=>w.label),weeks.map(w=>w.t),T('weeklyTrend'));
   renderDonut(cT,rate);
-  renderWeeklyReview(weeks);
-  // vertical table (no scrollx)
+  renderWeeklyReview(focusedWeek?[focusedWeek]:[]);
+
+  // ③ 테이블: 전체 주차 표시, 포커스 주 하이라이트
+  const fLabel=focusedWeek?.label;
   document.getElementById('summary-section').innerHTML=`<div class="section-title">${T('weeklySummary')} (${weeks.length})</div>
     <div class="table-wrap"><table><thead><tr><th>${T('week')}</th><th>${T('totalSales')}</th><th>${T('adSales')}</th><th>${T('organic')}</th><th>${T('adSpend')}</th><th>${T('roas')}</th><th>ACoS</th><th>${T('orders')}</th><th>${T('vsPrev')}</th></tr></thead><tbody>${
-    weeks.map((w,i)=>{const roas=w.t.adSpend>0?w.t.adSales/w.t.adSpend:0;const pv=weeks[i-1];const hc=w.t.sales>0,hp=pv&&pv.t.sales>0;const {cls,txt}=(hc&&hp)?chg(w.t.sales,pv.t.sales,false):{cls:'neutral',txt:'—'};const bc=cls==='up'?'badge-up':cls==='down'?'badge-down':'badge-neu';
+    weeks.map((w,i)=>{const roas=w.t.adSpend>0?w.t.adSales/w.t.adSpend:0;const pv=weeks[i-1];const hc=w.t.sales>0,hp=pv&&pv.t.sales>0;const{cls,txt}=(hc&&hp)?chg(w.t.sales,pv.t.sales,false):{cls:'neutral',txt:'—'};const bc=cls==='up'?'badge-up':cls==='down'?'badge-down':'badge-neu';
     const crossNote=w.crossMonth?` <span style="font-size:10px;color:#64748b">(전월 포함)</span>`:'';
-    return `<tr${w.crossMonth?' style="background:#fafafa"':''}><td>${w.label}${crossNote}</td><td><strong style="color:#1d4ed8">${fmtAgg(w.t.sales,rate.krw,rate.sgd)}</strong></td><td>${fmtAgg(w.t.adSales,rate.krw,rate.sgd)}</td><td>${fmtAgg(w.t.organic,rate.krw,rate.sgd)}</td><td>${fmtAgg(w.t.adSpend,rate.krw,rate.sgd)}</td><td>${fmtRoas(roas)}</td><td>${w.t.adSales>0?fmtAcos(w.t.adSpend/w.t.adSales*100):'—'}</td><td>${fmtN(w.t.orders)}</td><td><span class="badge ${bc}">${txt}</span></td></tr>`;}).join('')
+    const isFocus=w.label===fLabel;
+    const rowStyle=(isFocus?'outline:2px solid var(--accent);outline-offset:-2px;':'')+(w.crossMonth?'background:#fafafa;':'');
+    return `<tr style="${rowStyle}"><td>${w.label}${crossNote}</td><td><strong style="color:#1d4ed8">${fmtAgg(w.t.sales,rate.krw,rate.sgd)}</strong></td><td>${fmtAgg(w.t.adSales,rate.krw,rate.sgd)}</td><td>${fmtAgg(w.t.organic,rate.krw,rate.sgd)}</td><td>${fmtAgg(w.t.adSpend,rate.krw,rate.sgd)}</td><td>${fmtRoas(roas)}</td><td>${w.t.adSales>0?fmtAcos(w.t.adSpend/w.t.adSales*100):'—'}</td><td>${fmtN(w.t.orders)}</td><td><span class="badge ${bc}">${txt}</span></td></tr>`;}).join('')
   }</tbody></table></div>`;
 }
 function buildMonthWeeks(sortedInMonth,dim,cur){
@@ -1269,7 +1303,7 @@ function buildMonthWeeks(sortedInMonth,dim,cur){
     // Get ALL allData days in this Sun-Sat span
     const fullRows=allData.filter(d=>{
       const dd=new Date(d.yr,d.mo-1,d.day);
-      return dd>=weekSunDate&&dd<=weekSatDate&&inRange(d);
+      return dd>=weekSunDate&&dd<=weekSatDate;
     });
     if(fullRows.length){
       const fr=fullRows[0],lr=fullRows[fullRows.length-1];
@@ -1294,7 +1328,7 @@ function getAllWeeks(data){
 
 // ──── DAILY ────────────────────────────────────────────────────────
 function renderDaily(){
-  const _rs=document.getElementById('review-section');if(_rs)_rs.innerHTML='';
+  const _rs=document.getElementById('review-section');if(_rs)_rs.innerHTML='';_hideWeekNav();
   const cur=byMonth[activeMonth]; const rows=cur.rows.filter(inRange);
   const cT=rows.length?agg(rows):emptyT(); const rate=avgRate(cT);
   const sorted=rows.slice().sort((a,b)=>a.day-b.day);
@@ -1424,11 +1458,7 @@ function navWeek(dir){
     if(activeWeekIdx===null)activeWeekIdx=getThisWeekIdx();
     activeWeekIdx=Math.max(0,Math.min(gw.length-1,activeWeekIdx+dir));
   }
-  // sync activeMonth to the month containing the week's Sun
-  const w=gw[activeWeekIdx];
-  const moKey=w.wSun.getFullYear()+'_'+String(w.wSun.getMonth()+1).padStart(2,'0');
-  if(byMonth[moKey])activeMonth=moKey;
-  render();
+  render(); // activeMonth 변경 없이 리뷰 포커스만 이동
 }
 function weekNavBtns(curIdx){
   const gw=buildGlobalWeeks();
@@ -1447,24 +1477,9 @@ function weekNavBtns(curIdx){
 }
 
 function renderWeeklyBanner(rate){
-  const gw=buildGlobalWeeks();
-  const curIdx=activeWeekIdx??getThisWeekIdx();
-  const nav=weekNavBtns(curIdx);
-  // if viewing a specific past week — show actual banner
-  if(activeWeekIdx!==null){
-    const w=gw[activeWeekIdx];
-    const t=w.t||{sales:0,adSpend:0,orders:0};
-    const r=avgRate(t);
-    const sym=activeCurrency==='KRW'?'₩':activeCurrency==='SGD'?'S$':'$';
-    const totalRoas=t.adSpend>0?t.sales/t.adSpend:0;
-    const confirmed=w.wSat<new Date();
-    const label=confirmed?`✅ ${isKo()?'확정 주간':'Confirmed Week'}`:`🗓️ ${T('projWeek')}`;
-    document.getElementById('top-banner').innerHTML=nav+`<div class="banner-confirmed"><div><div class="banner-label">${label}</div><div class="banner-value">${fmtAgg(t.sales,r.krw,r.sgd)}</div></div><div class="banner-right"><div class="banner-month">${w.label}</div><div class="banner-days">${fmtN(t.orders)} ${isKo()?'오더':'orders'} · ROAS ${fmtRoas(totalRoas)}</div></div></div>`;
-    return;
-  }
-  // default: show projection banner
+  // 이번 주 예상 매출 배너 (nav 버튼은 week-nav-bar에 분리)
   const wp=calcWeeklyProjection();
-  if(!wp){document.getElementById('top-banner').innerHTML=nav;return;}
+  if(!wp){document.getElementById('top-banner').innerHTML='';return;}
   const sym=activeCurrency==='KRW'?'₩':activeCurrency==='SGD'?'S$':'$';
   const cr=getRate(wp.prevMoYr,wp.prevMoNum);
   const fmt=v=>activeCurrency==='USD'?sym+v.toFixed(0):activeCurrency==='KRW'?'₩'+Math.round(v*cr).toLocaleString():'S$'+(v*1.34).toFixed(0);
@@ -1472,7 +1487,7 @@ function renderWeeklyBanner(rate){
   const wLabel=`${wp.wSun.getMonth()+1}/${wp.wSun.getDate()}~${wEnd.getMonth()+1}/${wEnd.getDate()}`;
   const metaKo=`직전달 일평균 ${fmt(wp.prevDailyAvg)} · 최근3주 ${fmt(wp.last21Avg)} · 요일패턴 반영`;
   const metaEn=`Prev mo avg ${fmt(wp.prevDailyAvg)} · Last 3wk avg ${fmt(wp.last21Avg)} · DOW pattern`;
-  document.getElementById('top-banner').innerHTML=nav+`<div class="banner-projected"><div><div class="banner-label">🗓️ ${T('projWeek')}</div><div class="banner-value">${fmt(wp.proj)}</div><div class="banner-meta">${isKo()?metaKo:metaEn}</div></div><div class="banner-right"><div class="banner-month">${wLabel}</div><div class="banner-days">${isKo()?'확정':'Actual'} ${fmt(wp.actualTotal)} / ${isKo()?'예측':'Est'} ${wp.projDays}${isKo()?'일':'d'}</div></div></div>`;
+  document.getElementById('top-banner').innerHTML=`<div class="banner-projected"><div><div class="banner-label">🗓️ ${T('projWeek')}</div><div class="banner-value">${fmt(wp.proj)}</div><div class="banner-meta">${isKo()?metaKo:metaEn}</div></div><div class="banner-right"><div class="banner-month">${wLabel}</div><div class="banner-days">${isKo()?'확정':'Actual'} ${fmt(wp.actualTotal)} / ${isKo()?'예측':'Est'} ${wp.projDays}${isKo()?'일':'d'}</div></div></div>`;
 }
 
 // ──── CHARTS ───────────────────────────────────────────────────────
@@ -2025,7 +2040,7 @@ function buildAdsBuckets(){
 }
 
 function renderAds(){
-  const _rs=document.getElementById('review-section');if(_rs)_rs.innerHTML='';
+  const _rs=document.getElementById('review-section');if(_rs)_rs.innerHTML='';_hideWeekNav();
   document.getElementById('topbar-badge').textContent=isKo()?'광고 분석':'Ads';
   document.getElementById('daily-section').style.display='none';
 
