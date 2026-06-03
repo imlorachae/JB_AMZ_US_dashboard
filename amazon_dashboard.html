@@ -376,6 +376,8 @@ let allData=[], byMonth={}, monthKeys=[];
 let appMode='sales';
 let activeTab='weekly', activeCurrency='USD', vineMode='exclude', chartType='bar';
 let activeMonth=null, activeYear=null, activeQuarter=null;
+let activeWeekIdx=null; // null=전체, number=특정주 인덱스
+let _gwCache=null; // global week list cache
 let rangeFrom='', rangeTo='';
 let mainCI=null, donutCI=null;
 
@@ -869,6 +871,40 @@ function renderQuarter(){
 
 // ──── MONTHLY REVIEW ────────────────────────────────────────────────
 const MONTHLY_REVIEWS={
+  '2026_2':{
+    ko:`<p>🌱 <strong>Vine 런칭 월 — 실매출 $96, Vine $5,790</strong>. 2/24 실구매 1건 외 전량 Vine 리뷰어 발송. 매출보다 리뷰 시딩이 목표인 달.</p>
+<p>📢 <strong>광고 집행 없음.</strong> 오가닉 트래픽만으로 운영. 세션 데이터 극히 미미 (일 1~4회). 브랜드 인지도 0에 가까운 초기 상태.</p>
+<p>📋 <strong>Vine 효과 분석:</strong> 2/26~27 이틀간 140건 Vine 오더. 리뷰 확보 후 광고 론칭 준비 단계로 적절한 전략.</p>
+<p>📌 <strong>다음 달 포커스:</strong> Vine 리뷰 게시 확인 → 광고 캠페인 론칭 → 초기 키워드 테스트.</p>`,
+    en:`<p>🌱 <strong>Vine launch month — Real sales $96, Vine $5,790</strong>. Only 1 real purchase (2/24); all else is Vine reviewer seeding. Revenue secondary to review acquisition this month.</p>
+<p>📢 <strong>No ad spend.</strong> Organic traffic only, sessions minimal (1–4/day). Brand awareness near zero at this stage.</p>
+<p>📋 <strong>Vine impact:</strong> 140 Vine orders over 2/26–27. Correct strategy: secure reviews first, then launch ads.</p>
+<p>📌 <strong>Next month focus:</strong> Confirm Vine reviews posted → launch ad campaigns → test initial keywords.</p>`
+  },
+  '2026_3':{
+    ko:`<p>🚀 <strong>광고 첫 달 — 실매출 $979 / 광고비 $754 / 17 real orders</strong>. 3/10 광고 첫 집행. Vine($1,950) 제외 순매출 기준.</p>
+<p>📊 <strong>Total ROAS 0.41 (Vine 제외 기준):</strong> 광고 첫 달로 효율보다 데이터 수집에 의의. 어떤 키워드/상품이 전환되는지 파악하는 기간.</p>
+<p>🌱 <strong>오가닉 비중 낮음:</strong> 광고 없이는 세션·매출 모두 제한적. CO2 마스크 키워드 인지도 형성 단계.</p>
+<p>⚠️ <strong>Vine 3/16:</strong> $1,950 재고 발송으로 실매출 희석. Vine 제외 수치로 광고 성과 평가 필요.</p>
+<p>📌 <strong>다음 달 포커스:</strong> 전환 키워드 집중 → 비효율 캠페인 예산 축소 → 일 예산 점진적 증대.</p>`,
+    en:`<p>🚀 <strong>First ad month — Real sales $979 / Ad spend $754 / 17 real orders</strong>. Ads launched 3/10. Excluding Vine ($1,950).</p>
+<p>📊 <strong>Total ROAS 0.41 (ex-Vine):</strong> First ad month — data collection more valuable than efficiency. Identifying which keywords/products convert.</p>
+<p>🌱 <strong>Low organic share:</strong> Sessions and sales heavily dependent on ads. CO2 mask keyword awareness still being built.</p>
+<p>⚠️ <strong>Vine 3/16:</strong> $1,950 inventory send dilutes real sales metrics. Evaluate ad performance on ex-Vine numbers.</p>
+<p>📌 <strong>Next month focus:</strong> Concentrate on converting keywords → cut low-efficiency budgets → gradually scale daily spend.</p>`
+  },
+  '2026_4':{
+    ko:`<p>📈 <strong>성장 가속 — 실매출 $3,821 / 광고비 $2,770 / 62 real orders</strong>. 전월 대비 실매출 +290%. Vine($1,950) 제외 기준.</p>
+<p>💪 <strong>주간 최고기록:</strong> 4/26~5/2 주간 $1,518 — 일 평균 $217. 캠페인 최적화 효과 본격화.</p>
+<p>⚠️ <strong>광고 효율 아직 낮음:</strong> Total ROAS 0.96 (실매출 기준). 광고비가 매출과 거의 동일 수준. 4월 하순부터 개선 신호 보임 (4/27 $325, 4/28 $422).</p>
+<p>🌱 <strong>오가닉 증가 시작:</strong> 4월 후반 오가닉 비중 15~25%. Vine 리뷰 효과 반영되기 시작.</p>
+<p>📌 <strong>다음 달 포커스:</strong> CO2 마스크 핵심 KW 집중, 미전환 캠페인 정리, 일 예산 $120→$150 확대 검토.</p>`,
+    en:`<p>📈 <strong>Growth acceleration — Real sales $3,821 / Ad spend $2,770 / 62 real orders</strong>. +290% real revenue MoM. Excluding Vine ($1,950).</p>
+<p>💪 <strong>Best week:</strong> 4/26–5/2 at $1,518 total — $217/day avg. Campaign optimization paying off.</p>
+<p>⚠️ <strong>Ad efficiency still low:</strong> Total ROAS 0.96 (ex-Vine). Ad spend nearly equals revenue. Improvement signals visible late April ($325 on 4/27, $422 on 4/28).</p>
+<p>🌱 <strong>Organic starting to grow:</strong> Late April organic share 15–25%. Vine review effect beginning to show.</p>
+<p>📌 <strong>Next month focus:</strong> Concentrate on CO2 mask core keywords, clean up non-converting campaigns, consider scaling daily budget $120→$150.</p>`
+  },
   '2026_5':{
     ko:`<p>📈 <strong>3주차(5/15~21) 전환점:</strong> 일평균 매출이 전주($93) 대비 <strong>+142%($225)</strong>로 급증. 캠페인 확장 및 세션 급증(5/15 249회)이 맞물린 결과.</p>
 <p>🌱 <strong>오가닉 비중 34%($1,385):</strong> 광고 없이 발생한 수요. 브랜드 인지도가 점진적으로 쌓이고 있음. 전체 매출 중 광고 기여 66%.</p>
@@ -970,17 +1006,145 @@ function renderMonthlyReview(yr,mo,cT,rate){
 
 // ── Weekly reviews ──
 const WEEKLY_REVIEWS={
-  'w_2026_22':{
-    ko:`<p>📅 <strong>최근 주(5/22~28) 총 $1,183 / 22 orders</strong> — 5월 마지막 완전한 주간 기록.</p>
-<p>📈 <strong>월요일(5/25) 스파이크:</strong> $384 (7 orders) — 주간 매출의 32% 집중. 주초 구매 집중 패턴 재확인.</p>
-<p>⚠️ <strong>금요일(5/22) 저점 $55:</strong> 주말 전 최저치. 금요일 광고 입찰가 조정 고려.</p>
-<p>💡 <strong>오가닉 비중 18%:</strong> 5월 전체(34%) 대비 감소. 광고 의존도 높아진 주간 — 오가닉 상승 전략 필요.</p>
-<p>📌 <strong>Total ROAS 1.31:</strong> 광고비 $901 대비 매출 $1,183. 효율은 소폭 개선 중이나 목표(2.0+) 대비 여전히 낮음.</p>`,
-    en:`<p>📅 <strong>Last week (5/22–28): $1,183 / 22 orders</strong> — Final complete week of May.</p>
-<p>📈 <strong>Monday (5/25) spike: $384 (7 orders)</strong> — 32% of weekly revenue in one day. Monday buying pattern confirmed again.</p>
-<p>⚠️ <strong>Friday (5/22) low point: $55</strong> — Weakest day before weekend. Consider adjusting Friday bids.</p>
-<p>💡 <strong>Organic share 18%:</strong> Down from May overall (34%). Higher ad dependency this week — organic growth strategy needed.</p>
-<p>📌 <strong>Total ROAS 1.31:</strong> $901 ad spend vs $1,183 revenue. Efficiency slowly improving but below target (2.0+).</p>`
+  'wr_2026_02_22':{
+    ko:`<p>🌱 <strong>Vine 런칭 주(2/22~28) — 실매출 $96 / Vine $5,790</strong>. 2/24 실구매 1건($96). 2/26~27 Vine 140건 발송.</p>
+<p>📢 <strong>광고 없음, 세션 극소.</strong> 브랜드 론칭 첫 주로 리뷰 시딩이 유일한 목표. 매출 수치보다 리뷰 확보가 핵심.</p>
+<p>📌 <strong>다음 주 액션:</strong> Vine 리뷰 게시 모니터링 → 광고 론칭 준비.</p>`,
+    en:`<p>🌱 <strong>Vine launch week (2/22–28) — Real sales $96 / Vine $5,790</strong>. 1 real order (2/24, $96). 140 Vine units shipped 2/26–27.</p>
+<p>📢 <strong>No ads, minimal sessions.</strong> First launch week — review seeding is the only goal. Reviews matter more than revenue here.</p>
+<p>📌 <strong>Next week action:</strong> Monitor Vine review postings → prepare ad launch.</p>`
+  },
+  'wr_2026_03_01':{
+    ko:`<p>📅 <strong>3/1~7 — $130 / 2 orders</strong>. 광고 없는 순수 오가닉. 3/3($65), 3/5($65) 각 1건씩.</p>
+<p>🌱 <strong>Vine 리뷰 게시 대기 중.</strong> 세션 10~29회/일. 구매 전환은 있으나 매우 제한적. 아직 키워드 인지도 형성 전 단계.</p>
+<p>📌 <strong>다음 주:</strong> 광고 첫 집행 준비. 핵심 키워드(co2 mask, carboxy therapy) 타겟팅 설계.</p>`,
+    en:`<p>📅 <strong>3/1–7 — $130 / 2 orders</strong>. Pure organic, no ads. Orders on 3/3 ($65) and 3/5 ($65).</p>
+<p>🌱 <strong>Vine reviews still pending.</strong> Sessions 10–29/day. Conversions happening but very limited. Pre-keyword-awareness stage.</p>
+<p>📌 <strong>Next week:</strong> Prepare first ad launch. Design targeting around core keywords (co2 mask, carboxy therapy).</p>`
+  },
+  'wr_2026_03_08':{
+    ko:`<p>🚀 <strong>광고 첫 주(3/8~14) — $57 / 1 order / 광고비 $130.83</strong>. 3/10 첫 광고 집행. 3/14(토) 첫 광고 전환 $57.</p>
+<p>📊 <strong>첫 주 ROAS 0.44.</strong> 광고 초기라 효율보다 데이터 수집이 목적. 클릭·노출 패턴 파악 중.</p>
+<p>💡 <strong>세션 급증:</strong> 광고 시작 후 일 세션 23~47회로 상승. 광고 트래픽 유입 확인.</p>
+<p>📌 <strong>다음 주:</strong> 전환 키워드 확인, 예산 유지하며 최적화 시작.</p>`,
+    en:`<p>🚀 <strong>First ad week (3/8–14) — $57 / 1 order / Ad spend $130.83</strong>. Ads launched 3/10. First ad conversion 3/14 ($57).</p>
+<p>📊 <strong>Week 1 ROAS 0.44.</strong> Data collection more important than efficiency at launch. Identifying click and impression patterns.</p>
+<p>💡 <strong>Sessions surged:</strong> 23–47/day after ads started. Ad traffic confirmed flowing in.</p>
+<p>📌 <strong>Next week:</strong> Identify converting keywords, maintain budget, begin optimization.</p>`
+  },
+  'wr_2026_03_15':{
+    ko:`<p>📅 <strong>3/15~21 — $2,148 ($198 실매출) / 광고비 $169.79</strong>. 3/16 Vine 2차($1,950). 실 광고 전환: $34+$32+$130+$32 = $228.</p>
+<p>📈 <strong>광고 효과 확인:</strong> 3/17(화) $34, 3/19(목) $130 전환. CO2 마스크 키워드 전환 시작. Ad ROAS 1.34.</p>
+<p>⚠️ <strong>Vine으로 실매출 희석.</strong> Vine 제외 시 주간 실매출 $198, ROAS 1.17. 광고 효율 개선 중.</p>
+<p>📌 <strong>다음 주:</strong> 전환 키워드(carboxy therapy, co2 mask) 입찰 강화. 비전환 키워드 예산 축소.</p>`,
+    en:`<p>📅 <strong>3/15–21 — $2,148 ($198 real) / Ad spend $169.79</strong>. 3/16 Vine 2nd batch ($1,950). Real ad conversions: $228.</p>
+<p>📈 <strong>Ad conversions confirmed:</strong> 3/17 ($34), 3/19 ($130). CO2 mask keywords converting. Ad ROAS 1.34.</p>
+<p>⚠️ <strong>Vine diluting real metrics.</strong> Ex-Vine real sales $198, ROAS 1.17. Efficiency improving.</p>
+<p>📌 <strong>Next week:</strong> Boost bids on converting keywords (carboxy therapy, co2 mask). Cut budget on non-converters.</p>`
+  },
+  'wr_2026_03_22':{
+    ko:`<p>📅 <strong>3/22~28 — $382 / 6 orders / 광고비 $325.57</strong>. Vine 없는 순수 광고 성과 주간. Total ROAS 1.17.</p>
+<p>📈 <strong>첫 $100+ 달성:</strong> 3/24 $122, 3/27 $130. 화·금 전환 강세. 주중 구매 패턴 형성 중.</p>
+<p>⚠️ <strong>광고비 $325 vs 매출 $382.</strong> 아직 손익분기 근접. 오가닉 $65 포함 시 개선 여지 있음.</p>
+<p>📌 <strong>다음 주:</strong> 예산 소폭 증가, 화/금 입찰가 상향, 저효율 캠페인 정리.</p>`,
+    en:`<p>📅 <strong>3/22–28 — $382 / 6 orders / Ad spend $325.57</strong>. Clean ad performance week, no Vine. Total ROAS 1.17.</p>
+<p>📈 <strong>First $100+ days:</strong> 3/24 ($122), 3/27 ($130). Tue/Fri conversion strength forming.</p>
+<p>⚠️ <strong>Ad spend $325 vs revenue $382.</strong> Near breakeven. Including organic ($65) shows improvement.</p>
+<p>📌 <strong>Next week:</strong> Slightly increase budget, raise bids Tue/Fri, clean up low-efficiency campaigns.</p>`
+  },
+  'wr_2026_03_29':{
+    ko:`<p>📅 <strong>3/29~4/4(월경) — $507 / 7 orders / 광고비 $404.76</strong>. 3월→4월 크로스 주간. 주말(4/4 토) $195로 최강.</p>
+<p>📈 <strong>주말 강세 패턴 확인:</strong> 4/4(토) $195 (3 orders). 토요일 전환율 높음 → 주말 입찰가 상향 검토.</p>
+<p>💡 <strong>Total ROAS 1.25:</strong> 전주 대비 소폭 개선. 광고 최적화 효과 점진적 반영 중.</p>
+<p>📌 <strong>4월 첫 주 목표:</strong> 일 예산 $70→$100으로 확대. 토/일 입찰 강화.</p>`,
+    en:`<p>📅 <strong>3/29–4/4 (cross-month) — $507 / 7 orders / Ad spend $404.76</strong>. Weekend strong: 4/4 (Sat) $195.</p>
+<p>📈 <strong>Weekend pattern confirmed:</strong> Saturday best day (3 orders, $195). Weekend bid increases warranted.</p>
+<p>💡 <strong>Total ROAS 1.25:</strong> Slight improvement from prior week. Ad optimization gradually taking effect.</p>
+<p>📌 <strong>April W1 target:</strong> Scale daily budget $70→$100. Strengthen Sat/Sun bids.</p>`
+  },
+  'wr_2026_04_05':{
+    ko:`<p>📅 <strong>4/5~11 — $918 / 16 orders / 광고비 $490.43</strong>. 전주 대비 매출 +81%. Total ROAS 1.87 — 손익분기 근접.</p>
+<p>📈 <strong>토요일(4/11) 최강: $364 / 6 orders.</strong> 주간 매출의 40% 집중. 주중+주말 고른 전환 시작.</p>
+<p>💡 <strong>오가닉 $259 (28%):</strong> Vine 리뷰 효과 반영. 브랜드 검색 증가 신호.</p>
+<p>📌 <strong>다음 주:</strong> 예산 $100→$120. 토요일 집중 캠페인 강화. ROAS 2.0 돌파 도전.</p>`,
+    en:`<p>📅 <strong>4/5–11 — $918 / 16 orders / Ad spend $490.43</strong>. Revenue +81% WoW. Total ROAS 1.87 — near breakeven.</p>
+<p>📈 <strong>Saturday (4/11) best: $364 / 6 orders.</strong> 40% of weekly revenue in one day. Balanced weekday + weekend conversions beginning.</p>
+<p>💡 <strong>Organic $259 (28%):</strong> Vine review effect showing. Brand search growing.</p>
+<p>📌 <strong>Next week:</strong> Scale $100→$120/day. Strengthen Saturday campaigns. Target ROAS 2.0.</p>`
+  },
+  'wr_2026_04_12':{
+    ko:`<p>📅 <strong>4/12~18 — $2,372 ($422 실매출) / 광고비 $570.14</strong>. 4/14 Vine 3차($1,950). 실매출 기준 ROAS 0.74.</p>
+<p>⚠️ <strong>Vine으로 인해 실성과 희석.</strong> Vine 제외 시 실매출 $422, 광고비 $570 → 아직 적자. 광고 최적화 계속 필요.</p>
+<p>💡 <strong>광고 전환 다변화:</strong> 일, 수, 목, 토 모두 전환 발생. 특정 요일 의존도 낮아지는 중.</p>
+<p>📌 <strong>다음 주:</strong> Vine 마지막 배치 이후 순수 광고 성과 집중 측정. 예산 유지, 키워드 정밀 조정.</p>`,
+    en:`<p>📅 <strong>4/12–18 — $2,372 ($422 real) / Ad spend $570.14</strong>. 3rd Vine batch 4/14 ($1,950). Real ROAS 0.74.</p>
+<p>⚠️ <strong>Vine diluting real performance.</strong> Ex-Vine: $422 revenue vs $570 spend — still in deficit. Continued optimization needed.</p>
+<p>💡 <strong>Conversion diversifying:</strong> Sales occurring Sun, Wed, Thu, Sat. Less single-day dependency.</p>
+<p>📌 <strong>Next week:</strong> Post final Vine batch, focus on pure ad performance measurement. Maintain budget, fine-tune keywords.</p>`
+  },
+  'wr_2026_04_19':{
+    ko:`<p>📅 <strong>4/19~25 — $865 / 16 orders / 광고비 $844.17</strong>. Vine 없는 순수 광고 성과. Total ROAS 1.02 — 손익분기점 돌파.</p>
+<p>🎯 <strong>ROAS 1.0+ 첫 달성.</strong> 광고비 = 매출 수준. 오가닉 포함 시 실질 흑자 진입. 캠페인 최적화 효과 누적.</p>
+<p>📈 <strong>일 $100+ 안정화:</strong> 4/19($129), 4/20($136), 4/22($130), 4/25($243). 토요일 최강.</p>
+<p>📌 <strong>다음 주:</strong> 예산 $120→$150 확대. 고효율 키워드 입찰 상향. 손익분기 이상 유지 목표.</p>`,
+    en:`<p>📅 <strong>4/19–25 — $865 / 16 orders / Ad spend $844.17</strong>. Pure ad performance, no Vine. Total ROAS 1.02 — breakeven crossed.</p>
+<p>🎯 <strong>First ROAS 1.0+ achieved.</strong> Ad spend ≈ revenue. Including organic, net positive. Cumulative optimization effect.</p>
+<p>📈 <strong>$100+ days stabilizing:</strong> 4/19 ($129), 4/20 ($136), 4/22 ($130), 4/25 ($243). Saturday strongest.</p>
+<p>📌 <strong>Next week:</strong> Scale $120→$150/day. Raise bids on top keywords. Target sustained ROAS above 1.0.</p>`
+  },
+  'wr_2026_04_26':{
+    ko:`<p>📅 <strong>4/26~5/2(월경) — $1,518 / 25 orders / 광고비 $863.86</strong>. Total ROAS 1.76. 월간 최고 주간.</p>
+<p>🔥 <strong>4/28(화) $422 / 7 orders — 단일 최고.</strong> 화요일 집중 구매. 4/27(월) $325(5 orders)도 강세. 주초 구매 패턴 공고화.</p>
+<p>💡 <strong>오가닉 비중 증가:</strong> 4/26 $252 오가닉 100%, 4/27 $195 오가닉. 브랜드 인지도 상승 확인.</p>
+<p>📌 <strong>5월 포커스:</strong> 이 모멘텀 유지. ROAS 2.0 돌파를 위한 저효율 캠페인 컷. 일 예산 $150 안착.</p>`,
+    en:`<p>📅 <strong>4/26–5/2 (cross-month) — $1,518 / 25 orders / Ad spend $863.86</strong>. Total ROAS 1.76. Monthly high week.</p>
+<p>🔥 <strong>4/28 (Tue) $422 / 7 orders — single-day record.</strong> Monday also strong ($325, 5 orders). Mon–Tue buying pattern solidifying.</p>
+<p>💡 <strong>Growing organic share:</strong> 4/26 organic 100%, 4/27 organic $195. Brand awareness rising confirmed.</p>
+<p>📌 <strong>May focus:</strong> Maintain this momentum. Cut low-efficiency campaigns for ROAS 2.0. Settle at $150/day budget.</p>`
+  },
+  'wr_2026_05_03':{
+    ko:`<p>📅 <strong>5/3~9 — $611 / 11 orders / 광고비 $776.37</strong>. 전주($1,518) 대비 -60% 급감. Total ROAS 0.79.</p>
+<p>⚠️ <strong>전환율 급락 원인 분석 필요.</strong> 5/7(목) 세션 90회인데 매출 $0. 광고 노출은 되나 전환 안 됨. 랜딩/PDP 이슈 가능성.</p>
+<p>💡 <strong>세션은 유지(일 51~99회).</strong> 트래픽 문제 아님 — 전환율 문제. PDP 이미지·가격·리뷰 점검 권장.</p>
+<p>📌 <strong>다음 주:</strong> PDP 최적화 (메인 이미지, A+ 콘텐츠, 가격 경쟁력) → 전환율 개선.</p>`,
+    en:`<p>📅 <strong>5/3–9 — $611 / 11 orders / Ad spend $776.37</strong>. -60% vs prior week ($1,518). Total ROAS 0.79.</p>
+<p>⚠️ <strong>Conversion rate drop needs investigation.</strong> 5/7 (Thu): 90 sessions, $0 sales. Impressions without conversions — possible PDP issue.</p>
+<p>💡 <strong>Sessions maintained (51–99/day).</strong> Not a traffic problem — a conversion problem. Review PDP images, price, reviews.</p>
+<p>📌 <strong>Next week:</strong> PDP optimization (main image, A+ content, pricing competitiveness) → improve CVR.</p>`
+  },
+  'wr_2026_05_10':{
+    ko:`<p>📅 <strong>5/10~16 — $706.58 / 13 orders / 광고비 $600.73</strong>. Total ROAS 1.18. 전주 대비 +16% 회복.</p>
+<p>📈 <strong>수요일(5/13) $195 / 3 orders:</strong> 주간 최강. 중반부터 전환율 회복 신호. 5/15(금) $105, 5/16(토) $144.58 — 주말 모멘텀 복귀.</p>
+<p>💡 <strong>광고비 합리화:</strong> 전주 대비 광고비 $776→$600(-23%). ROAS 개선. 저효율 캠페인 컷 효과.</p>
+<p>📌 <strong>다음 주:</strong> 이 전환 회복세 유지. 5월 3주차 $1,000+ 목표.</p>`,
+    en:`<p>📅 <strong>5/10–16 — $706.58 / 13 orders / Ad spend $600.73</strong>. Total ROAS 1.18. +16% recovery from prior week.</p>
+<p>📈 <strong>Wednesday (5/13) $195 / 3 orders:</strong> Week's best. Conversion recovery signal from mid-week. Fri/Sat momentum returning.</p>
+<p>💡 <strong>Ad spend rationalized:</strong> $776→$600 (-23%) vs prior week. ROAS improved. Low-efficiency campaign cuts working.</p>
+<p>📌 <strong>Next week:</strong> Sustain this CVR recovery. Target $1,000+ for May week 3.</p>`
+  },
+  'wr_2026_05_17':{
+    ko:`<p>📅 <strong>5/17~23 — $1,522.22 / 29 orders / 광고비 $943.39</strong>. Total ROAS 1.61. 전주 대비 +116% 폭등.</p>
+<p>🔥 <strong>브레이크아웃 주간.</strong> 5/17(일) $328 / 6 orders로 시작, 5/18(월) $294, 5/19(화) $289. 3일 연속 $280+ 기록.</p>
+<p>💡 <strong>세션 급증이 방아쇠:</strong> 5/15(금) 249 sessions — 광고 노출 급증 후 3일간 전환 지속. 캠페인 스케일업 타이밍 완벽.</p>
+<p>⚠️ <strong>금요일(5/22) $54.79 급락:</strong> 주 후반 소강. 월~수 집중 후 후반부 약세 패턴 반복.</p>
+<p>📌 <strong>다음 주:</strong> 이 모멘텀 유지. 월~수 집중 입찰 전략 강화. $1,500+ 주간 목표.</p>`,
+    en:`<p>📅 <strong>5/17–23 — $1,522.22 / 29 orders / Ad spend $943.39</strong>. Total ROAS 1.61. +116% WoW — breakout week.</p>
+<p>🔥 <strong>Breakout week.</strong> 5/17 (Sun) $328/6 orders, 5/18 (Mon) $294, 5/19 (Tue) $289. Three consecutive $280+ days.</p>
+<p>💡 <strong>Session surge triggered it:</strong> 249 sessions on 5/15 (Fri) — ad exposure spike converted over 3 days. Perfect campaign scale-up timing.</p>
+<p>⚠️ <strong>Friday (5/22) drop to $54.79:</strong> Late-week slowdown. Mon–Wed concentration with back-half weakness repeating.</p>
+<p>📌 <strong>Next week:</strong> Sustain momentum. Strengthen Mon–Wed bid strategy. Target $1,500+ weekly.</p>`
+  },
+  'wr_2026_05_24':{
+    ko:`<p>📅 <strong>5/24~30 — $986.22 / 18 orders / 광고비 $686.56</strong>. Total ROAS 1.44. 전주($1,522) 대비 -35% 조정.</p>
+<p>📈 <strong>월요일(5/25) 스파이크: $383 / 7 orders</strong> — 주간 매출의 39% 집중. 주초 구매 패턴 재확인.</p>
+<p>⚠️ <strong>5/29~30 데이터 없음.</strong> 주 후반 광고·매출 모두 소강. 5월 마지막 주 특성(월말 예산 소진 가능성).</p>
+<p>💡 <strong>오가닉 $219 (22%):</strong> 전주 대비 오가닉 비중 소폭 상승. 브랜드 인지도 축적 지속.</p>
+<p>📌 <strong>6월 포커스:</strong> 월초 광고 예산 빠른 집행. 월~화 집중 전략 유지. ROAS 2.0 달성 목표.</p>`,
+    en:`<p>📅 <strong>5/24–30 — $986.22 / 18 orders / Ad spend $686.56</strong>. Total ROAS 1.44. -35% from prior week's peak — consolidation.</p>
+<p>📈 <strong>Monday (5/25) spike: $383 / 7 orders</strong> — 39% of weekly revenue in one day. Mon buying pattern confirmed again.</p>
+<p>⚠️ <strong>No data 5/29–30.</strong> Late-week quiet across ads and sales. Possible month-end budget exhaustion.</p>
+<p>💡 <strong>Organic $219 (22%):</strong> Organic share slightly up WoW. Brand awareness continuing to accumulate.</p>
+<p>📌 <strong>June focus:</strong> Fast budget deployment at month start. Maintain Mon–Tue concentration strategy. Target ROAS 2.0.</p>`
   }
 };
 function renderWeeklyReview(weeks){
@@ -1003,12 +1167,17 @@ function renderWeeklyReview(weeks){
     [isKo()?'오가닉 비중':'Organic %', orgPct.toFixed(1)+'%', '#06b6d4'],
     [isKo()?'오더 수':'Orders', fmtN(t.orders), 'var(--text)'],
   ];
-  // Find matching hardcoded review
-  const rev=WEEKLY_REVIEWS['w_2026_22'];
+  // dynamic key from week's Sunday date
+  const _wr=last.wSun||(() => {
+    const fr=last.rows?.[0]; if(!fr)return null;
+    const d=new Date(fr.yr,fr.mo-1,fr.day); d.setDate(d.getDate()-d.getDay()); return d;
+  })();
+  const wKey=_wr?`wr_${_wr.getFullYear()}_${String(_wr.getMonth()+1).padStart(2,'0')}_${String(_wr.getDate()).padStart(2,'0')}`:'';
+  const rev=WEEKLY_REVIEWS[wKey];
   const commentary=rev?(isKo()?rev.ko:rev.en):'';
   if(!commentary){el.innerHTML='';return;}
   el.innerHTML=_buildReviewCard(
-    'wk_2026_22',
+    'wk_'+wKey,
     (isKo()?'주간 세일즈 리뷰':'Weekly Sales Review')+' — '+last.label,
     isKo()?'최근 주 · Claude 분석':'Latest Week · Analyzed by Claude',
     kpis,
@@ -1058,7 +1227,11 @@ function renderMonthSummary(mData,title,rate){
 // ──── WEEKLY (item 5: vertical) ────────────────────────────────────
 function renderWeekly(){
   let weeks, scopeRows;
-  if(activeMonth==='all'){
+  if(activeWeekIdx!==null){
+    const gw=buildGlobalWeeks();
+    const w=gw[activeWeekIdx];
+    if(w){scopeRows=w.rows;weeks=[{...w}];}else{scopeRows=[];weeks=[];}
+  } else if(activeMonth==='all'){
     scopeRows=rangedData();
     weeks=getAllWeeks(scopeRows);
   } else {
@@ -1213,17 +1386,93 @@ function calcWeeklyProjection(){
   }
   return{proj:projTotal,actualTotal,projDays,base,prevDailyAvg,last21Avg,dowMult,dayRows,wSun,prevMoNum,prevMoYr};
 }
+// ──── GLOBAL WEEK NAVIGATION ───────────────────────────────────────
+function buildGlobalWeeks(){
+  if(_gwCache)return _gwCache;
+  const sorted=allData.slice().sort((a,b)=>new Date(a.yr,a.mo-1,a.day)-new Date(b.yr,b.mo-1,b.day));
+  if(!sorted.length)return(_gwCache=[]);
+  const first=sorted[0],last=sorted[sorted.length-1];
+  const d0=new Date(first.yr,first.mo-1,first.day);
+  d0.setDate(d0.getDate()-d0.getDay()); // go to Sunday
+  const dEnd=new Date(last.yr,last.mo-1,last.day);
+  const weeks=[];
+  for(let sun=new Date(d0);sun<=dEnd;sun.setDate(sun.getDate()+7)){
+    const wSun=new Date(sun);
+    const wSat=new Date(sun);wSat.setDate(sun.getDate()+6);
+    const rows=allData.filter(r=>{const d=new Date(r.yr,r.mo-1,r.day);return d>=wSun&&d<=wSat;});
+    const t=rows.length?agg(rows):null;
+    const hasSales=t&&(t.sales>0||t.adSpend>0||t.sessions>0);
+    const label=`${wSun.getMonth()+1}/${wSun.getDate()}~${wSat.getMonth()+1}/${wSat.getDate()}`;
+    const key=`wr_${wSun.getFullYear()}_${String(wSun.getMonth()+1).padStart(2,'0')}_${String(wSun.getDate()).padStart(2,'0')}`;
+    weeks.push({wSun:new Date(wSun),wSat:new Date(wSat),label,key,rows,t,hasSales});
+  }
+  return(_gwCache=weeks);
+}
+function getThisWeekIdx(){
+  const gw=buildGlobalWeeks();
+  const today=new Date();today.setHours(0,0,0,0);
+  // find week containing today, else last week with data
+  let idx=gw.findIndex(w=>today>=w.wSun&&today<=w.wSat);
+  if(idx<0)idx=gw.map((w,i)=>({i,h:w.hasSales})).filter(x=>x.h).pop()?.i??gw.length-1;
+  return idx;
+}
+function navWeek(dir){
+  // dir: 0=이번주, -1=이전주, 1=다음주
+  const gw=buildGlobalWeeks();
+  if(dir===0){activeWeekIdx=getThisWeekIdx();}
+  else{
+    if(activeWeekIdx===null)activeWeekIdx=getThisWeekIdx();
+    activeWeekIdx=Math.max(0,Math.min(gw.length-1,activeWeekIdx+dir));
+  }
+  // sync activeMonth to the month containing the week's Sun
+  const w=gw[activeWeekIdx];
+  const moKey=w.wSun.getFullYear()+'_'+String(w.wSun.getMonth()+1).padStart(2,'0');
+  if(byMonth[moKey])activeMonth=moKey;
+  render();
+}
+function weekNavBtns(curIdx){
+  const gw=buildGlobalWeeks();
+  const thisIdx=getThisWeekIdx();
+  const w=gw[curIdx]||gw[gw.length-1];
+  const isThis=curIdx===thisIdx;
+  const btn=(lbl,dir,disabled)=>`<button onclick="${disabled?'':'navWeek('+dir+')'}" style="padding:5px 14px;border:1px solid var(--border);border-radius:7px;font-size:12px;font-weight:600;cursor:${disabled?'default':'pointer'};background:var(--card);color:${disabled?'var(--muted)':'var(--text)'};opacity:${disabled?'0.4':'1'}">${lbl}</button>`;
+  const thisBtn=`<button onclick="navWeek(0)" style="padding:5px 14px;border:1px solid ${isThis?'var(--accent)':'var(--border)'};border-radius:7px;font-size:12px;font-weight:700;cursor:pointer;background:${isThis?'var(--accent)':'var(--card)'};color:${isThis?'#fff':'var(--text)'}">${isKo()?'이번 주':'This Week'}</button>`;
+  return `<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:8px 14px;background:var(--card);border:1px solid var(--border);border-radius:10px;margin-bottom:8px">
+    ${btn((isKo()?'◀ 이전 주':'◀ Prev'),-1,curIdx<=0)}
+    ${thisBtn}
+    ${btn((isKo()?'다음 주 ▶':'Next ▶'),1,curIdx>=gw.length-1)}
+    <span style="font-size:12px;font-weight:600;color:var(--text);margin-left:4px">📅 ${w.label}</span>
+    <button onclick="activeWeekIdx=null;render()" style="margin-left:auto;padding:5px 12px;border:1px solid var(--border);border-radius:7px;font-size:11px;cursor:pointer;background:var(--card);color:var(--muted)">${isKo()?'전체 보기':'All Weeks'}</button>
+  </div>`;
+}
+
 function renderWeeklyBanner(rate){
+  const gw=buildGlobalWeeks();
+  const curIdx=activeWeekIdx??getThisWeekIdx();
+  const nav=weekNavBtns(curIdx);
+  // if viewing a specific past week — show actual banner
+  if(activeWeekIdx!==null){
+    const w=gw[activeWeekIdx];
+    const t=w.t||{sales:0,adSpend:0,orders:0};
+    const r=avgRate(t);
+    const sym=activeCurrency==='KRW'?'₩':activeCurrency==='SGD'?'S$':'$';
+    const totalRoas=t.adSpend>0?t.sales/t.adSpend:0;
+    const confirmed=w.wSat<new Date();
+    const label=confirmed?`✅ ${isKo()?'확정 주간':'Confirmed Week'}`:`🗓️ ${T('projWeek')}`;
+    document.getElementById('top-banner').innerHTML=nav+`<div class="banner-confirmed"><div><div class="banner-label">${label}</div><div class="banner-value">${fmtAgg(t.sales,r.krw,r.sgd)}</div></div><div class="banner-right"><div class="banner-month">${w.label}</div><div class="banner-days">${fmtN(t.orders)} ${isKo()?'오더':'orders'} · ROAS ${fmtRoas(totalRoas)}</div></div></div>`;
+    return;
+  }
+  // default: show projection banner
   const wp=calcWeeklyProjection();
-  if(!wp){document.getElementById('top-banner').innerHTML='';return;}
+  if(!wp){document.getElementById('top-banner').innerHTML=nav;return;}
   const sym=activeCurrency==='KRW'?'₩':activeCurrency==='SGD'?'S$':'$';
   const cr=getRate(wp.prevMoYr,wp.prevMoNum);
-  const fmt=v=>activeCurrency==='USD'?sym+v.toFixed(0):activeCurrency==='KRW'?'₩'+Math.round(v*cr).toLocaleString():'S$'+( v*1.34).toFixed(0);
+  const fmt=v=>activeCurrency==='USD'?sym+v.toFixed(0):activeCurrency==='KRW'?'₩'+Math.round(v*cr).toLocaleString():'S$'+(v*1.34).toFixed(0);
   const wEnd=new Date(wp.wSun);wEnd.setDate(wp.wSun.getDate()+6);
   const wLabel=`${wp.wSun.getMonth()+1}/${wp.wSun.getDate()}~${wEnd.getMonth()+1}/${wEnd.getDate()}`;
   const metaKo=`직전달 일평균 ${fmt(wp.prevDailyAvg)} · 최근3주 ${fmt(wp.last21Avg)} · 요일패턴 반영`;
   const metaEn=`Prev mo avg ${fmt(wp.prevDailyAvg)} · Last 3wk avg ${fmt(wp.last21Avg)} · DOW pattern`;
-  document.getElementById('top-banner').innerHTML=`<div class="banner-projected"><div><div class="banner-label">🗓️ ${T('projWeek')}</div><div class="banner-value">${fmt(wp.proj)}</div><div class="banner-meta">${isKo()?metaKo:metaEn}</div></div><div class="banner-right"><div class="banner-month">${wLabel}</div><div class="banner-days">${isKo()?'확정':'Actual'} ${fmt(wp.actualTotal)} / ${isKo()?'예측':'Est'} ${wp.projDays}${isKo()?'일':'d'}</div></div></div>`;
+  document.getElementById('top-banner').innerHTML=nav+`<div class="banner-projected"><div><div class="banner-label">🗓️ ${T('projWeek')}</div><div class="banner-value">${fmt(wp.proj)}</div><div class="banner-meta">${isKo()?metaKo:metaEn}</div></div><div class="banner-right"><div class="banner-month">${wLabel}</div><div class="banner-days">${isKo()?'확정':'Actual'} ${fmt(wp.actualTotal)} / ${isKo()?'예측':'Est'} ${wp.projDays}${isKo()?'일':'d'}</div></div></div>`;
 }
 
 // ──── CHARTS ───────────────────────────────────────────────────────
