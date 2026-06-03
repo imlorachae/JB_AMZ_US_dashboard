@@ -326,9 +326,9 @@ tr:hover td{background:rgba(29,78,216,.05)}
       </div>
       <div class="navbar-right">
         <label id="rng-lbl">기간</label>
-        <div id="rng-from-mount"></div>
+        <input type="date" id="rng-from" style="background:var(--card2);border:1px solid var(--border);border-radius:6px;padding:4px 8px;color:var(--text);font-size:11px;outline:none;cursor:pointer">
         <span style="color:var(--muted);font-size:11px">~</span>
-        <div id="rng-to-mount"></div>
+        <input type="date" id="rng-to" style="background:var(--card2);border:1px solid var(--border);border-radius:6px;padding:4px 8px;color:var(--text);font-size:11px;outline:none;cursor:pointer">
         <button class="mini-btn" id="rng-apply" onclick="applyRange()">적용</button>
         <button class="mini-btn ghost" id="rng-reset" onclick="resetRange()">초기화</button>
       </div>
@@ -460,7 +460,7 @@ function dpOpen(id){const pp=document.getElementById('dpp-'+id);const isOpen=pp&
 function dpNav(id,dir){const s=_dp[id];s.m+=dir;if(s.m>11){s.m=0;s.y++;}else if(s.m<0){s.m=11;s.y--;}dpRender(id);}
 function dpRender(id){const s=_dp[id];if(!s)return;const el=document.getElementById('dpt-'+id);if(!el)return;el.textContent=_dpMN[s.m]+' '+s.y;const first=new Date(s.y,s.m,1).getDay();const days=new Date(s.y,s.m+1,0).getDate();const today=new Date();let h='';for(let i=0;i<first;i++)h+='<div class="dp-day dp-empty"></div>';for(let d=1;d<=days;d++){const ds=s.y+'-'+String(s.m+1).padStart(2,'0')+'-'+String(d).padStart(2,'0');const cls=(s.sel===ds?' dp-sel':'')+(today.getFullYear()===s.y&&today.getMonth()===s.m&&today.getDate()===d?' dp-today':'');h+='<div class="dp-day'+cls+'" onclick="event.stopPropagation();dpSelect(\''+id+'\',\''+ds+'\')">'+(d)+'</div>';}document.getElementById('dpg-'+id).innerHTML=h;}
 function dpSelect(id,ds){if(!_dp[id])return;_dp[id].sel=ds;const hi=document.getElementById(id);if(hi)hi.value=ds;const bt=document.getElementById('dpb-'+id);if(bt)bt.textContent=ds;const pp=document.getElementById('dpp-'+id);if(pp)pp.style.display='none';dpRender(id);}
-function dpSetVal(id,val){if(!document.getElementById('dpw-'+id))return;if(!_dp[id])dpInit(id,val);_dp[id].sel=val;if(val){const d=new Date(val+'T00:00:00');_dp[id].y=d.getFullYear();_dp[id].m=d.getMonth();}const hi=document.getElementById(id);if(hi)hi.value=val||'';const bt=document.getElementById('dpb-'+id);if(bt)bt.textContent=val||'—';dpRender(id);}
+function dpSetVal(id,val){const _nat=document.getElementById(id);if(_nat&&_nat.tagName==='INPUT'&&_nat.type==='date'){_nat.value=val||'';return;}if(!document.getElementById('dpw-'+id))return;if(!_dp[id])dpInit(id,val);_dp[id].sel=val;if(val){const d=new Date(val+'T00:00:00');_dp[id].y=d.getFullYear();_dp[id].m=d.getMonth();}const hi=document.getElementById(id);if(hi)hi.value=val||'';const bt=document.getElementById('dpb-'+id);if(bt)bt.textContent=val||'—';dpRender(id);}
 document.addEventListener('click',()=>document.querySelectorAll('.dp-popup').forEach(p=>p.style.display='none'));
 
 // ──── HELPERS ──────────────────────────────────────────────────────
@@ -675,8 +675,7 @@ function applyI18nStatic(){
   document.getElementById('ct-line').textContent=T('line');
   document.getElementById('ct-mix').textContent=T('mix');
   document.getElementById('donut-title').textContent=T('adVsOrg');
-  if(!document.getElementById('dpw-rng-from')){document.getElementById('rng-from-mount').innerHTML=dpHtml('rng-from',rangeFrom);dpInit('rng-from',rangeFrom);}else{dpSetVal('rng-from',rangeFrom);}
-  if(!document.getElementById('dpw-rng-to')){document.getElementById('rng-to-mount').innerHTML=dpHtml('rng-to',rangeTo);dpInit('rng-to',rangeTo);}else{dpSetVal('rng-to',rangeTo);}
+  dpSetVal('rng-from',rangeFrom); dpSetVal('rng-to',rangeTo);
   // upload screen
   document.getElementById('upl-sub').textContent=T('uplSub');
   document.getElementById('upl-btn').textContent=T('uplBtn');
@@ -703,25 +702,43 @@ function buildNavbar(){
     // year selector in year-tabs
     if(yt)yt.innerHTML=allYears.map(y=>`<button class="year-tab ${y===activeYear?'active':''}" onclick="selectYear(${y})">${y}</button>`).join('');
     tabs=[1,2,3,4].map(q=>({k:q,label:qName(q),active:q===activeQuarter,fn:`selectQuarter(${q})`}));
-  } else { // weekly, monthly, daily — 월 탭 없음, 연도 탭만
+  } else { // monthly, weekly, daily — 연도 탭 + 월 탭
     if(yt)yt.innerHTML=allYears.map(y=>`<button class="year-tab ${y===activeYear?'active':''}" onclick="selectYear(${y})">${y}</button>`).join('');
-    tabs=[];
+    const ym=monthKeys.filter(k=>byMonth[k].yr===activeYear);
+    tabs=ym.map(k=>({k,label:mNameS(byMonth[k].mo),active:k===activeMonth,fn:`selectMonthTab('${k}')`}));
   }
   ut.innerHTML=tabs.map(t=>`<button class="unit-tab ${t.active?'active':''}" onclick="${t.fn}">${t.label}</button>`).join('');
   ut._tabs=tabs;
 }
 function selectYear(y){
   activeYear=y;
-  // update active month to latest in selected year
   const ym=monthKeys.filter(k=>byMonth[k].yr===y);
-  if(ym.length&&activeTab!=='annual'){
-    activeMonth=ym[ym.length-1];
-    activeQuarter=Math.ceil(byMonth[activeMonth].mo/3);
+  if(ym.length){
+    if(activeTab==='annual'||activeTab==='quarter'){
+      _syncRangeToYear(y);
+    } else {
+      activeMonth=ym[ym.length-1];
+      activeQuarter=Math.ceil(byMonth[activeMonth].mo/3);
+      if(activeTab==='weekly') _syncRangeToMonth(activeMonth);
+      else if(activeTab==='monthly'||activeTab==='daily') _syncRangeToMonth(activeMonth);
+    }
   }
   render();
 }
 function selectQuarter(q){ activeQuarter=q; render(); }
 function selectMonth(k){ activeMonth=k; activeWeekIdx=null; render(); }
+function selectMonthTab(k){
+  activeMonth=k; activeWeekIdx=null;
+  _syncRangeToMonth(k);
+  render();
+}
+function _syncRangeToMonth(k){
+  const m=byMonth[k]; if(!m) return;
+  const dim=new Date(m.yr,m.mo,0).getDate();
+  rangeFrom=`${m.yr}-${String(m.mo).padStart(2,'0')}-01`;
+  rangeTo=`${m.yr}-${String(m.mo).padStart(2,'0')}-${String(dim).padStart(2,'0')}`;
+  dpSetVal('rng-from',rangeFrom); dpSetVal('rng-to',rangeTo);
+}
 function applyRange(){ rangeFrom=document.getElementById('rng-from').value; rangeTo=document.getElementById('rng-to').value; render(); }
 function resetRange(){
   const s=allData.slice().sort((a,b)=>new Date(a.yr,a.mo-1,a.day)-new Date(b.yr,b.mo-1,b.day));
@@ -733,7 +750,22 @@ function resetRange(){
 
 // ──── CONTROLS ─────────────────────────────────────────────────────
 function setMode(m){ appMode=m; activeTab = m==='sales'?'weekly':'overview'; applyI18nStatic(); render(); }
-function setTab(t){ activeTab=t; if(t==='weekly'&&activeMonth==='all'){activeMonth=monthKeys[monthKeys.length-1];} applyI18nStatic(); render(); }
+function setTab(t){
+  activeTab=t;
+  if(t==='weekly'&&activeMonth==='all'){activeMonth=monthKeys[monthKeys.length-1];}
+  if(t==='monthly'||t==='daily') _syncRangeToMonth(activeMonth);
+  if(t==='annual'||t==='quarter') _syncRangeToYear(activeYear);
+  applyI18nStatic(); render();
+}
+function _syncRangeToYear(yr){
+  const ym=monthKeys.filter(k=>byMonth[k].yr===yr);
+  if(!ym.length)return;
+  const first=byMonth[ym[0]], last=byMonth[ym[ym.length-1]];
+  const ldim=new Date(last.yr,last.mo,0).getDate();
+  rangeFrom=`${first.yr}-${String(first.mo).padStart(2,'0')}-01`;
+  rangeTo=`${last.yr}-${String(last.mo).padStart(2,'0')}-${String(ldim).padStart(2,'0')}`;
+  dpSetVal('rng-from',rangeFrom); dpSetVal('rng-to',rangeTo);
+}
 function setCurrency(c,btn){ activeCurrency=c; document.querySelectorAll('.cur-btn').forEach(b=>b.classList.remove('active')); btn.classList.add('active'); applyI18nStatic(); render(); }
 function setVineMode(m){ vineMode=m; document.getElementById('vine-inc').classList.toggle('active',m==='include'); document.getElementById('vine-exc').classList.toggle('active',m==='exclude'); render(); }
 function setChartType(t){ chartType=t; document.getElementById('ct-bar').classList.toggle('active',t==='bar'); document.getElementById('ct-line').classList.toggle('active',t==='line'); document.getElementById('ct-mix').classList.toggle('active',t==='mix'); render(); }
