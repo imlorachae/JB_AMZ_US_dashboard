@@ -229,6 +229,9 @@ tr:hover td{background:rgba(29,78,216,.05)}
 .review-header-title{font-size:13px;font-weight:700;color:#fff}
 .review-edit-btn{margin-left:auto;background:rgba(255,255,255,.18);border:none;color:#fff;border-radius:6px;padding:3px 10px;font-size:11px;cursor:pointer;white-space:nowrap}
 .review-edit-btn:hover{background:rgba(255,255,255,.3)}
+.review-ai-btn{background:rgba(99,102,241,.85);border:none;color:#fff;border-radius:6px;padding:3px 10px;font-size:11px;cursor:pointer;white-space:nowrap;font-weight:600;margin-left:6px;transition:.15s}
+.review-ai-btn:hover{background:rgba(99,102,241,1)}
+.review-ai-btn:disabled{opacity:.55;cursor:wait}
 .review-body{padding:16px;background:var(--card)}
 .review-kpis{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-bottom:14px}
 .review-kpi{background:var(--card2);border-radius:8px;padding:10px 14px;text-align:center}
@@ -772,6 +775,114 @@ function setCurrency(c,btn){ activeCurrency=c; document.querySelectorAll('.cur-b
 function setVineMode(m){ vineMode=m; document.getElementById('vine-inc').classList.toggle('active',m==='include'); document.getElementById('vine-exc').classList.toggle('active',m==='exclude'); render(); }
 function setChartType(t){ chartType=t; document.getElementById('ct-bar').classList.toggle('active',t==='bar'); document.getElementById('ct-line').classList.toggle('active',t==='line'); document.getElementById('ct-mix').classList.toggle('active',t==='mix'); render(); }
 
+// ──── AI REVIEW GENERATION ─────────────────────────────────────────
+let _jbApiKey=localStorage.getItem('jb_api_key')||'';
+function _getApiKey(){
+  if(!_jbApiKey){
+    _jbApiKey=prompt(isKo()?'Anthropic API 키를 입력하세요 (로컬 저장):':'Enter your Anthropic API key (stored locally):');
+    if(_jbApiKey)localStorage.setItem('jb_api_key',_jbApiKey);
+  }
+  return _jbApiKey;
+}
+async function _callClaude(prompt){
+  const key=_getApiKey(); if(!key)return null;
+  try{
+    const res=await fetch('https://api.anthropic.com/v1/messages',{
+      method:'POST',
+      headers:{'Content-Type':'application/json','x-api-key':key,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
+      body:JSON.stringify({model:'claude-haiku-4-5',max_tokens:900,messages:[{role:'user',content:prompt}]})
+    });
+    if(!res.ok){
+      const e=await res.json();
+      if(res.status===401){localStorage.removeItem('jb_api_key');_jbApiKey='';alert('API 키 오류. 다시 입력해주세요.');}
+      else alert('API 오류: '+(e.error?.message||res.status));
+      return null;
+    }
+    return (await res.json()).content[0].text;
+  }catch(e){alert('API 호출 실패: '+e.message);return null;}
+}
+function _monthlyPrompt(yr,mo,cT,prevCT){
+  const roas=cT.adSpend>0?(cT.sales/cT.adSpend).toFixed(2):'0';
+  const acos=cT.sales>0?(cT.adSpend/cT.sales*100).toFixed(1):'0';
+  const org=cT.sales>0?(cT.organic/cT.sales*100).toFixed(1):'0';
+  const aov=cT.orders>0?(cT.sales/cT.orders).toFixed(2):'0';
+  const prev=prevCT?`이전달 매출 $${prevCT.sales.toFixed(0)}, ROAS ${prevCT.adSpend>0?(prevCT.sales/prevCT.adSpend).toFixed(2):'N/A'}x`:'데이터 없음';
+  return `당신은 Amazon 셀러(JungBeauty, 뷰티/스킨케어)의 월간 실적을 분석하는 전문가입니다.
+아래 지표를 바탕으로 월간 세일즈 리뷰를 HTML 형식(<p> 태그 사용)으로 작성하세요.
+
+기간: ${yr}년 ${mo}월
+- 총 매출: $${cT.sales.toFixed(0)}
+- 광고 매출: $${cT.adSales.toFixed(0)} / 오가닉: $${cT.organic.toFixed(0)} (${org}%)
+- 광고비: $${cT.adSpend.toFixed(0)}
+- Total ROAS: ${roas}x | Total ACoS: ${acos}%
+- 오더 수: ${cT.orders} | 평균 주문금액: $${aov}
+- ${prev}
+
+4~5개 bullet point를 <p> 태그로 작성하고, 핵심 수치는 <strong>으로 강조, 이모지 활용.
+항목: 전체 성과, 광고 효율, 오가닉 성장, 주목할 패턴, 다음달 액션 플랜.
+구체적 수치 포함, 실행 가능한 인사이트 중심. 최대 280단어.`;
+}
+function _weeklyPrompt(week,prevWeek){
+  const t=week.t;
+  const roas=t.adSpend>0?(t.sales/t.adSpend).toFixed(2):'0';
+  const acos=t.sales>0?(t.adSpend/t.sales*100).toFixed(1):'0';
+  const org=t.sales>0?(t.organic/t.sales*100).toFixed(1):'0';
+  const wow=prevWeek&&prevWeek.t.sales>0?((t.sales-prevWeek.t.sales)/prevWeek.t.sales*100).toFixed(1):null;
+  const prev=prevWeek?`직전주 매출 $${prevWeek.t.sales.toFixed(0)}, 오더 ${prevWeek.t.orders}건`:'첫 주차';
+  return `당신은 Amazon 셀러(JungBeauty, 뷰티/스킨케어)의 주간 실적을 분석하는 전문가입니다.
+아래 지표를 바탕으로 주간 세일즈 리뷰를 HTML 형식(<p> 태그 사용)으로 작성하세요.
+
+기간: ${week.label}
+- 총 매출: $${t.sales.toFixed(0)}${wow?` (전주 대비 ${wow>0?'+':''}${wow}%)`:''}
+- 광고 매출: $${t.adSales.toFixed(0)} / 오가닉: $${t.organic.toFixed(0)} (${org}%)
+- 광고비: $${t.adSpend.toFixed(0)}
+- Total ROAS: ${roas}x | Total ACoS: ${acos}%
+- 오더 수: ${t.orders}
+- ${prev}
+
+3~4개 bullet point를 <p> 태그로 작성하고, 핵심 수치는 <strong>으로 강조, 이모지 활용.
+항목: 주간 성과 요약, 광고 효율 평가, 특이사항 또는 개선점.
+구체적 수치 포함. 최대 220단어.`;
+}
+async function triggerAIGenerate(id){
+  const btn=document.getElementById('ai-btn-'+id);
+  if(btn){btn.disabled=true;btn.textContent='⏳ '+(isKo()?'생성 중…':'Generating…');}
+  try{
+    if(id.startsWith('mo_')){
+      const[,yr,mo]=id.split('_');
+      const k=yr+'.'+mo; const m=byMonth[k]; if(!m)return;
+      const cT=m.rows.length?agg(m.rows):emptyT();
+      const ym=monthKeys.filter(x=>byMonth[x].yr===parseInt(yr));
+      const idx=ym.findIndex(x=>byMonth[x].mo===parseInt(mo));
+      const prevCT=idx>0?agg(byMonth[ym[idx-1]].rows):null;
+      const result=await _callClaude(_monthlyPrompt(parseInt(yr),parseInt(mo),cT,prevCT));
+      if(result){
+        const ts=new Date().toLocaleDateString(isKo()?'ko-KR':'en-US');
+        const html=result+`<div style="font-size:10px;color:var(--muted);margin-top:8px">🤖 AI Generated · ${ts}</div>`;
+        localStorage.setItem('ai_review_'+id,html);
+        const el=document.getElementById('ai-comm-'+id); if(el)el.innerHTML=html;
+        const hdr=document.querySelector(`#ai-btn-${id}`)?.closest('.review-card')?.querySelector('.review-header-title');
+        if(hdr&&!hdr.querySelector('.ai-tag')){const t=document.createElement('span');t.className='ai-tag';t.style.cssText='font-size:9px;background:rgba(99,102,241,.15);color:#6366f1;padding:2px 6px;border-radius:10px;margin-left:6px';t.textContent='🤖 AI';hdr.appendChild(t);}
+      }
+    } else if(id.startsWith('wk_')){
+      const wKey=id.slice(3);
+      const weeks=getAllWeeks(rangedData());
+      const week=weeks.find(w=>_weekKey(w)===wKey)||weeks[weeks.length-1];
+      if(!week)return;
+      const wIdx=weeks.indexOf(week);
+      const result=await _callClaude(_weeklyPrompt(week,wIdx>0?weeks[wIdx-1]:null));
+      if(result){
+        const ts=new Date().toLocaleDateString(isKo()?'ko-KR':'en-US');
+        const html=result+`<div style="font-size:10px;color:var(--muted);margin-top:8px">🤖 AI Generated · ${ts}</div>`;
+        localStorage.setItem('ai_review_'+id,html);
+        const el=document.getElementById('ai-comm-'+id); if(el)el.innerHTML=html;
+      }
+    }
+  }finally{
+    if(btn){btn.disabled=false;btn.textContent='🤖 '+(isKo()?'AI 재생성':'AI Re-gen');}
+  }
+}
+
 // ──── MAIN RENDER ──────────────────────────────────────────────────
 function render(){
   const nav=document.querySelector('.navbar');
@@ -974,17 +1085,21 @@ function renderReviewNoteArea(id){
 // ── Review card builder (monthly & weekly share same structure) ──
 function _buildReviewCard(id,title,subtitle,kpiItems,commentary){
   const saved=loadNote(id);
+  const aiContent=localStorage.getItem('ai_review_'+id);
+  const displayComm=aiContent||commentary||`<span style="color:var(--muted);font-size:13px">${isKo()?'AI 생성 버튼을 눌러 요약을 만들어보세요.':'Click 🤖 AI Generate to create a summary.'}</span>`;
+  const aiTag=aiContent?`<span style="font-size:9px;background:rgba(99,102,241,.15);color:#6366f1;padding:2px 6px;border-radius:10px;margin-left:6px">🤖 AI</span>`:'';
   const kpiHtml=kpiItems.map(([lb,val,col])=>`<div class="review-kpi"><div class="review-kpi-lbl">${lb}</div><div class="review-kpi-val" style="color:${col||'var(--text)'}">${val}</div></div>`).join('');
   const noteHtml=saved?`<div style="font-style:italic;color:#6b7280">${saved}</div>`:'';
   return `<div class="review-card">
   <div class="review-header">
-    <span class="review-header-title">📋 ${title}</span>
+    <span class="review-header-title">📋 ${title}${aiTag}</span>
     <span style="font-size:11px;color:rgba(255,255,255,.65);margin-left:4px">${subtitle}</span>
     <button class="review-edit-btn" onclick="toggleNoteEdit('${id}')">✏️ ${isKo()?'메모 편집':'Edit Note'}</button>
+    <button class="review-ai-btn" id="ai-btn-${id}" onclick="triggerAIGenerate('${id}')">🤖 ${isKo()?'AI 생성':'AI Generate'}</button>
   </div>
   <div class="review-body">
     <div class="review-kpis">${kpiHtml}</div>
-    <div class="review-commentary">${commentary}</div>
+    <div class="review-commentary" id="ai-comm-${id}">${displayComm}</div>
     <div class="review-notes" id="rn-note-${id}" style="display:${saved?'block':'none'}">
       <div class="review-notes-lbl">📝 ${isKo()?'추가 메모':'Notes'}</div>
       <div class="review-notes-text">${saved}</div>
@@ -1002,10 +1117,9 @@ function _buildReviewCard(id,title,subtitle,kpiItems,commentary){
 function renderMonthlyReview(yr,mo,cT,rate){
   const el=document.getElementById('review-section');
   if(!el)return;
-  if(!isConfirmed(yr,mo)){el.innerHTML='';return;}
+  if(!isConfirmed(yr,mo)&&!localStorage.getItem('ai_review_mo_'+yr+'_'+mo)){el.innerHTML='';return;}
   const key=yr+'_'+mo;
   const rev=MONTHLY_REVIEWS[key];
-  if(!rev){el.innerHTML='';return;}
   const r=rate;
   const totalRoas=cT.adSpend>0?cT.sales/cT.adSpend:0;
   const totalAcos=cT.sales>0?cT.adSpend/cT.sales*100:0;
@@ -1201,7 +1315,7 @@ function renderWeeklyReview(weeks){
   const wKey=_wr?`wr_${_wr.getFullYear()}_${String(_wr.getMonth()+1).padStart(2,'0')}_${String(_wr.getDate()).padStart(2,'0')}`:'';
   const rev=WEEKLY_REVIEWS[wKey];
   const commentary=rev?(isKo()?rev.ko:rev.en):'';
-  if(!commentary){el.innerHTML='';return;}
+  if(!commentary&&!wKey){el.innerHTML='';return;}
   el.innerHTML=_buildReviewCard(
     'wk_'+wKey,
     (isKo()?'주간 세일즈 리뷰':'Weekly Sales Review')+' — '+last.label,
