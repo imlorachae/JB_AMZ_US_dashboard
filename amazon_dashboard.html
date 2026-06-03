@@ -846,6 +846,55 @@ function renderQuarter(){
   document.getElementById('summary-section').innerHTML=html;
 }
 
+// ──── MONTHLY REVIEW ────────────────────────────────────────────────
+const MONTHLY_REVIEWS={
+  '2026_5':{
+    ko:`<p>📈 <strong>3주차(5/15~21) 전환점:</strong> 일평균 매출이 전주($93) 대비 <strong>+142%($225)</strong>로 급증. 캠페인 확장 및 세션 급증(5/15 249회)이 맞물린 결과.</p>
+<p>🌱 <strong>오가닉 비중 34%($1,385):</strong> 광고 없이 발생한 수요. 브랜드 인지도가 점진적으로 쌓이고 있음. 전체 매출 중 광고 기여 66%.</p>
+<p>⚠️ <strong>광고 효율 개선 필요:</strong> Total ROAS 1.26으로 아직 손익분기점 미달. Ad ACoS 120% — 광고 기여 매출만으로는 광고비 미회수. 고효율 키워드 집중 + 저효율 예산 축소 권장.</p>
+<p>🏆 <strong>베스트 데이:</strong> 5/25 $383 (7 orders) · 5/17 $329 (6 orders). 주말 전후 집중 구매 패턴 확인 → 주말 입찰가 상향 고려.</p>
+<p>📌 <strong>다음 달 포커스:</strong> 광고 예산 유지 + CVR 개선(PDP 최적화), CO2 마스크 핵심 키워드 중심 캠페인 집중.</p>`,
+    en:`<p>📈 <strong>Week 3 (5/15–21) inflection point:</strong> Daily avg revenue jumped <strong>+142% ($225/day)</strong> vs prior week ($93/day). Campaign scaling + session surge (249 on 5/15) drove the breakout.</p>
+<p>🌱 <strong>Organic share 34% ($1,385):</strong> Demand without ads — brand visibility is gradually building. 66% of revenue is ad-attributed.</p>
+<p>⚠️ <strong>Ad efficiency needs improvement:</strong> Total ROAS 1.26, still below breakeven. Ad ACoS 120% — ad-attributed revenue alone doesn't cover spend. Focus budget on high-performing keywords, cut low-efficiency campaigns.</p>
+<p>🏆 <strong>Best days:</strong> 5/25 $384 (7 orders) · 5/17 $329 (6 orders). Weekend buying concentration confirmed → consider raising weekend bids.</p>
+<p>📌 <strong>Next month focus:</strong> Maintain ad budget + improve CVR (PDP optimization), concentrate on core CO2 mask keywords.</p>`
+  }
+};
+function renderMonthlyReviewCard(yr,mo,cT,rate){
+  if(!isConfirmed(yr,mo))return'';
+  const key=yr+'_'+mo;
+  const rev=MONTHLY_REVIEWS[key];
+  if(!rev)return'';
+  const r=rate;
+  const totalRoas=cT.adSpend>0?cT.sales/cT.adSpend:0;
+  const adAcos=cT.adSales>0?cT.adSpend/cT.adSales*100:0;
+  const totalAcos=cT.sales>0?cT.adSpend/cT.sales*100:0;
+  const orgPct=cT.sales>0?cT.organic/cT.sales*100:0;
+  const sym=activeCurrency==='KRW'?'₩':activeCurrency==='SGD'?'S$':'$';
+  const aov=cT.orders>0?cT.sales/cT.orders:0;
+  const rc=v=>v>=2?'#22c55e':v>=1?'#f59e0b':'#ef4444';
+  const ac=v=>v<50?'#22c55e':v<80?'#f59e0b':'#ef4444';
+  const kpi=(lb,val,col)=>`<div style="background:var(--card2);border-radius:8px;padding:10px 14px;text-align:center"><div style="font-size:11px;color:var(--muted);margin-bottom:4px">${lb}</div><div style="font-size:17px;font-weight:700;color:${col||'var(--text)'}">${val}</div></div>`;
+  const commentary=isKo()?rev.ko:rev.en;
+  return `<div style="margin-top:20px;border:1px solid var(--border);border-radius:12px;overflow:hidden">
+  <div style="background:linear-gradient(135deg,#1e40af,#0891b2);padding:12px 18px;display:flex;align-items:center;gap:8px">
+    <span style="font-size:14px;font-weight:700;color:#fff">📋 ${isKo()?'월간 세일즈 리뷰':'Monthly Sales Review'} — ${ymName(yr,mo)}</span>
+    <span style="margin-left:auto;font-size:11px;color:rgba(255,255,255,.7)">${isKo()?'Claude 분석':'Analyzed by Claude'}</span>
+  </div>
+  <div style="padding:16px;background:var(--card)">
+    <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-bottom:14px">
+      ${kpi(isKo()?'총 매출':'Total Sales',fmtAgg(cT.sales,r.krw,r.sgd),'#1d4ed8')}
+      ${kpi('Total ROAS',fmtRoas(totalRoas),rc(totalRoas))}
+      ${kpi('Total ACoS',fmtAcos(totalAcos),ac(totalAcos))}
+      ${kpi(isKo()?'오가닉 비중':'Organic %',orgPct.toFixed(1)+'%','#06b6d4')}
+      ${kpi(isKo()?'평균 주문금액':'Avg Order',sym+aov.toFixed(2),'var(--text)')}
+    </div>
+    <div style="font-size:13px;line-height:1.9;color:var(--text);border-top:1px solid var(--border);padding-top:12px">${commentary}</div>
+  </div>
+</div>`;
+}
+
 // ──── MONTHLY ──────────────────────────────────────────────────────
 function renderMonthly(){
   const cur=byMonth[activeMonth]; const rows=cur.rows.filter(inRange);
@@ -859,7 +908,8 @@ function renderMonthly(){
   const mData=monthKeys.filter(k=>byMonth[k].yr===yr);
   renderTrendChart(mData.map(k=>mNameS(byMonth[k].mo)),mData.map(k=>agg(byMonth[k].rows.filter(inRange))),T('monthlyTrend'));
   renderDonut(cT,rate);
-  document.getElementById('summary-section').innerHTML=`<div class="section-title">${T('monthlySummary')}</div>`+monthSummaryHTML(mData,rate);
+  const _revHtml=renderMonthlyReviewCard(cur.yr,cur.mo,cT,rate);
+  document.getElementById('summary-section').innerHTML=`<div class="section-title">${T('monthlySummary')}</div>`+monthSummaryHTML(mData,rate)+_revHtml;
 }
 
 // shared month summary (item 2: confirmed/projected columns)
