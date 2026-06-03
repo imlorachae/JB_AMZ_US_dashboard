@@ -223,6 +223,23 @@ tr:hover td{background:rgba(29,78,216,.05)}
 
 @media(max-width:1100px){.kpi-grid5{grid-template-columns:repeat(3,1fr)}.charts-grid{grid-template-columns:1fr}}
 @media(max-width:700px){.kpi-grid5{grid-template-columns:repeat(2,1fr)}.ratio-grid{grid-template-columns:repeat(2,1fr)}.quarter-cards{grid-template-columns:repeat(2,1fr)}}
+#review-section{margin-bottom:10px}
+.review-card{border:1px solid var(--border);border-radius:12px;overflow:hidden;margin-bottom:10px}
+.review-header{background:linear-gradient(135deg,#1e40af,#0891b2);padding:11px 16px;display:flex;align-items:center;gap:8px}
+.review-header-title{font-size:13px;font-weight:700;color:#fff}
+.review-edit-btn{margin-left:auto;background:rgba(255,255,255,.18);border:none;color:#fff;border-radius:6px;padding:3px 10px;font-size:11px;cursor:pointer;white-space:nowrap}
+.review-edit-btn:hover{background:rgba(255,255,255,.3)}
+.review-body{padding:16px;background:var(--card)}
+.review-kpis{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-bottom:14px}
+.review-kpi{background:var(--card2);border-radius:8px;padding:10px 14px;text-align:center}
+.review-kpi-lbl{font-size:11px;color:var(--muted);margin-bottom:4px}
+.review-kpi-val{font-size:17px;font-weight:700}
+.review-commentary{font-size:13px;line-height:1.9;color:var(--text);border-top:1px solid var(--border);padding-top:12px}
+.review-notes{margin-top:12px;border-top:1px solid var(--border);padding-top:10px}
+.review-notes-lbl{font-size:11px;font-weight:700;color:var(--muted);margin-bottom:6px}
+.review-notes-text{font-size:13px;line-height:1.8;color:var(--text);white-space:pre-wrap}
+.review-textarea{width:100%;min-height:100px;border:1px solid var(--accent);border-radius:8px;padding:10px;font-size:13px;line-height:1.8;color:var(--text);background:var(--card);resize:vertical;box-sizing:border-box;font-family:inherit}
+.review-save-btn{margin-top:8px;padding:6px 18px;background:var(--accent);color:#fff;border:none;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer}
 .dp-wrap{position:relative;display:inline-block;vertical-align:middle}
 .dp-btn{cursor:pointer;padding:5px 10px;border:1px solid var(--border);border-radius:6px;font-size:12px;color:var(--text);background:var(--card);min-width:88px;text-align:center;user-select:none;white-space:nowrap}
 .dp-btn:hover{border-color:var(--accent)}
@@ -317,6 +334,7 @@ tr:hover td{background:rgba(29,78,216,.05)}
       </div>
     </div>
 
+    <div id="review-section"></div>
     <div id="top-banner"></div>
     <div class="kpi-grid5" id="kpi-row1"></div>
     <div class="ratio-grid" id="ratio-grid"></div>
@@ -788,6 +806,7 @@ function renderRatios(cT){
 
 // ──── ANNUAL ───────────────────────────────────────────────────────
 function renderAnnual(){
+  const _rs=document.getElementById('review-section');if(_rs)_rs.innerHTML='';
   const yr=activeYear;
   const yRows=rangedData().filter(d=>d.yr===yr);
   const yT=yRows.length?agg(yRows):emptyT();
@@ -811,6 +830,7 @@ function renderAnnual(){
 
 // ──── QUARTER (item 3 drilldown) ───────────────────────────────────
 function renderQuarter(){
+  const _rs=document.getElementById('review-section');if(_rs)_rs.innerHTML='';
   const yr=activeYear;
   const quarters=[1,2,3,4].map(q=>{
     const mos=[1+(q-1)*3,2+(q-1)*3,3+(q-1)*3];
@@ -862,38 +882,138 @@ const MONTHLY_REVIEWS={
 <p>📌 <strong>Next month focus:</strong> Maintain ad budget + improve CVR (PDP optimization), concentrate on core CO2 mask keywords.</p>`
   }
 };
-function renderMonthlyReviewCard(yr,mo,cT,rate){
-  if(!isConfirmed(yr,mo))return'';
+// ── Review note localStorage helpers ──
+function _rnKey(id){return'jb_review_note_'+id;}
+function loadNote(id){return localStorage.getItem(_rnKey(id))||'';}
+function saveNote(id){
+  const ta=document.getElementById('rn-ta-'+id);
+  if(!ta)return;
+  localStorage.setItem(_rnKey(id),ta.value);
+  renderReviewNoteArea(id);
+}
+function toggleNoteEdit(id){
+  const ea=document.getElementById('rn-edit-'+id);
+  if(!ea)return;
+  const open=ea.style.display!=='none';
+  ea.style.display=open?'none':'block';
+  if(!open){const ta=document.getElementById('rn-ta-'+id);if(ta)ta.value=loadNote(id);}
+}
+function renderReviewNoteArea(id){
+  const saved=loadNote(id);
+  const na=document.getElementById('rn-note-'+id);
+  const ea=document.getElementById('rn-edit-'+id);
+  if(na){
+    na.style.display=saved?'block':'none';
+    const nt=na.querySelector('.review-notes-text');if(nt)nt.textContent=saved;
+  }
+  if(ea)ea.style.display='none';
+}
+
+// ── Review card builder (monthly & weekly share same structure) ──
+function _buildReviewCard(id,title,subtitle,kpiItems,commentary){
+  const saved=loadNote(id);
+  const kpiHtml=kpiItems.map(([lb,val,col])=>`<div class="review-kpi"><div class="review-kpi-lbl">${lb}</div><div class="review-kpi-val" style="color:${col||'var(--text)'}">${val}</div></div>`).join('');
+  const noteHtml=saved?`<div style="font-style:italic;color:#6b7280">${saved}</div>`:'';
+  return `<div class="review-card">
+  <div class="review-header">
+    <span class="review-header-title">📋 ${title}</span>
+    <span style="font-size:11px;color:rgba(255,255,255,.65);margin-left:4px">${subtitle}</span>
+    <button class="review-edit-btn" onclick="toggleNoteEdit('${id}')">✏️ ${isKo()?'메모 편집':'Edit Note'}</button>
+  </div>
+  <div class="review-body">
+    <div class="review-kpis">${kpiHtml}</div>
+    <div class="review-commentary">${commentary}</div>
+    <div class="review-notes" id="rn-note-${id}" style="display:${saved?'block':'none'}">
+      <div class="review-notes-lbl">📝 ${isKo()?'추가 메모':'Notes'}</div>
+      <div class="review-notes-text">${saved}</div>
+    </div>
+    <div id="rn-edit-${id}" style="display:none;margin-top:12px;border-top:1px solid var(--border);padding-top:10px">
+      <div class="review-notes-lbl">📝 ${isKo()?'메모 입력 (직접 수정 가능)':'Add / Edit Notes'}</div>
+      <textarea class="review-textarea" id="rn-ta-${id}" placeholder="${isKo()?'이슈, 특이사항, 다음 달 액션 등 자유롭게 입력하세요…':'Enter issues, observations, next actions…'}">${saved}</textarea>
+      <button class="review-save-btn" onclick="saveNote('${id}')">💾 ${isKo()?'저장':'Save'}</button>
+      <button style="margin-left:8px;padding:6px 14px;border:1px solid var(--border);border-radius:7px;font-size:12px;cursor:pointer;background:var(--card)" onclick="toggleNoteEdit('${id}')">${isKo()?'취소':'Cancel'}</button>
+    </div>
+  </div>
+</div>`;
+}
+
+function renderMonthlyReview(yr,mo,cT,rate){
+  const el=document.getElementById('review-section');
+  if(!el)return;
+  if(!isConfirmed(yr,mo)){el.innerHTML='';return;}
   const key=yr+'_'+mo;
   const rev=MONTHLY_REVIEWS[key];
-  if(!rev)return'';
+  if(!rev){el.innerHTML='';return;}
   const r=rate;
   const totalRoas=cT.adSpend>0?cT.sales/cT.adSpend:0;
-  const adAcos=cT.adSales>0?cT.adSpend/cT.adSales*100:0;
   const totalAcos=cT.sales>0?cT.adSpend/cT.sales*100:0;
   const orgPct=cT.sales>0?cT.organic/cT.sales*100:0;
   const sym=activeCurrency==='KRW'?'₩':activeCurrency==='SGD'?'S$':'$';
   const aov=cT.orders>0?cT.sales/cT.orders:0;
   const rc=v=>v>=2?'#22c55e':v>=1?'#f59e0b':'#ef4444';
   const ac=v=>v<50?'#22c55e':v<80?'#f59e0b':'#ef4444';
-  const kpi=(lb,val,col)=>`<div style="background:var(--card2);border-radius:8px;padding:10px 14px;text-align:center"><div style="font-size:11px;color:var(--muted);margin-bottom:4px">${lb}</div><div style="font-size:17px;font-weight:700;color:${col||'var(--text)'}">${val}</div></div>`;
-  const commentary=isKo()?rev.ko:rev.en;
-  return `<div style="margin-top:20px;border:1px solid var(--border);border-radius:12px;overflow:hidden">
-  <div style="background:linear-gradient(135deg,#1e40af,#0891b2);padding:12px 18px;display:flex;align-items:center;gap:8px">
-    <span style="font-size:14px;font-weight:700;color:#fff">📋 ${isKo()?'월간 세일즈 리뷰':'Monthly Sales Review'} — ${ymName(yr,mo)}</span>
-    <span style="margin-left:auto;font-size:11px;color:rgba(255,255,255,.7)">${isKo()?'Claude 분석':'Analyzed by Claude'}</span>
-  </div>
-  <div style="padding:16px;background:var(--card)">
-    <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-bottom:14px">
-      ${kpi(isKo()?'총 매출':'Total Sales',fmtAgg(cT.sales,r.krw,r.sgd),'#1d4ed8')}
-      ${kpi('Total ROAS',fmtRoas(totalRoas),rc(totalRoas))}
-      ${kpi('Total ACoS',fmtAcos(totalAcos),ac(totalAcos))}
-      ${kpi(isKo()?'오가닉 비중':'Organic %',orgPct.toFixed(1)+'%','#06b6d4')}
-      ${kpi(isKo()?'평균 주문금액':'Avg Order',sym+aov.toFixed(2),'var(--text)')}
-    </div>
-    <div style="font-size:13px;line-height:1.9;color:var(--text);border-top:1px solid var(--border);padding-top:12px">${commentary}</div>
-  </div>
-</div>`;
+  const kpis=[
+    [isKo()?'총 매출':'Total Sales', fmtAgg(cT.sales,r.krw,r.sgd), '#1d4ed8'],
+    ['Total ROAS', fmtRoas(totalRoas), rc(totalRoas)],
+    ['Total ACoS', fmtAcos(totalAcos), ac(totalAcos)],
+    [isKo()?'오가닉 비중':'Organic %', orgPct.toFixed(1)+'%', '#06b6d4'],
+    [isKo()?'평균 주문금액':'Avg Order', sym+aov.toFixed(2), 'var(--text)'],
+  ];
+  el.innerHTML=_buildReviewCard(
+    'mo_'+key,
+    (isKo()?'월간 세일즈 리뷰':'Monthly Sales Review')+' — '+ymName(yr,mo),
+    isKo()?'Claude 분석':'Analyzed by Claude',
+    kpis,
+    isKo()?rev.ko:rev.en
+  );
+}
+
+// ── Weekly reviews ──
+const WEEKLY_REVIEWS={
+  'w_2026_22':{
+    ko:`<p>📅 <strong>최근 주(5/22~28) 총 $1,183 / 22 orders</strong> — 5월 마지막 완전한 주간 기록.</p>
+<p>📈 <strong>월요일(5/25) 스파이크:</strong> $384 (7 orders) — 주간 매출의 32% 집중. 주초 구매 집중 패턴 재확인.</p>
+<p>⚠️ <strong>금요일(5/22) 저점 $55:</strong> 주말 전 최저치. 금요일 광고 입찰가 조정 고려.</p>
+<p>💡 <strong>오가닉 비중 18%:</strong> 5월 전체(34%) 대비 감소. 광고 의존도 높아진 주간 — 오가닉 상승 전략 필요.</p>
+<p>📌 <strong>Total ROAS 1.31:</strong> 광고비 $901 대비 매출 $1,183. 효율은 소폭 개선 중이나 목표(2.0+) 대비 여전히 낮음.</p>`,
+    en:`<p>📅 <strong>Last week (5/22–28): $1,183 / 22 orders</strong> — Final complete week of May.</p>
+<p>📈 <strong>Monday (5/25) spike: $384 (7 orders)</strong> — 32% of weekly revenue in one day. Monday buying pattern confirmed again.</p>
+<p>⚠️ <strong>Friday (5/22) low point: $55</strong> — Weakest day before weekend. Consider adjusting Friday bids.</p>
+<p>💡 <strong>Organic share 18%:</strong> Down from May overall (34%). Higher ad dependency this week — organic growth strategy needed.</p>
+<p>📌 <strong>Total ROAS 1.31:</strong> $901 ad spend vs $1,183 revenue. Efficiency slowly improving but below target (2.0+).</p>`
+  }
+};
+function renderWeeklyReview(weeks){
+  const el=document.getElementById('review-section');
+  if(!el){return;}
+  if(!weeks||!weeks.length){el.innerHTML='';return;}
+  const last=weeks[weeks.length-1];
+  const t=last.t;
+  const rate=avgRate(t);
+  const totalRoas=t.adSpend>0?t.sales/t.adSpend:0;
+  const totalAcos=t.sales>0?t.adSpend/t.sales*100:0;
+  const orgPct=t.sales>0?t.organic/t.sales*100:0;
+  const sym=activeCurrency==='KRW'?'₩':activeCurrency==='SGD'?'S$':'$';
+  const rc=v=>v>=2?'#22c55e':v>=1?'#f59e0b':'#ef4444';
+  const ac=v=>v<50?'#22c55e':v<80?'#f59e0b':'#ef4444';
+  const kpis=[
+    [isKo()?'주간 매출':'Weekly Sales', fmtAgg(t.sales,rate.krw,rate.sgd), '#1d4ed8'],
+    ['Total ROAS', fmtRoas(totalRoas), rc(totalRoas)],
+    ['Total ACoS', fmtAcos(totalAcos), ac(totalAcos)],
+    [isKo()?'오가닉 비중':'Organic %', orgPct.toFixed(1)+'%', '#06b6d4'],
+    [isKo()?'오더 수':'Orders', fmtN(t.orders), 'var(--text)'],
+  ];
+  // Find matching hardcoded review
+  const rev=WEEKLY_REVIEWS['w_2026_22'];
+  const commentary=rev?(isKo()?rev.ko:rev.en):'';
+  if(!commentary){el.innerHTML='';return;}
+  el.innerHTML=_buildReviewCard(
+    'wk_2026_22',
+    (isKo()?'주간 세일즈 리뷰':'Weekly Sales Review')+' — '+last.label,
+    isKo()?'최근 주 · Claude 분석':'Latest Week · Analyzed by Claude',
+    kpis,
+    commentary
+  );
 }
 
 // ──── MONTHLY ──────────────────────────────────────────────────────
@@ -909,8 +1029,8 @@ function renderMonthly(){
   const mData=monthKeys.filter(k=>byMonth[k].yr===yr);
   renderTrendChart(mData.map(k=>mNameS(byMonth[k].mo)),mData.map(k=>agg(byMonth[k].rows.filter(inRange))),T('monthlyTrend'));
   renderDonut(cT,rate);
-  const _revHtml=renderMonthlyReviewCard(cur.yr,cur.mo,cT,rate);
-  document.getElementById('summary-section').innerHTML=`<div class="section-title">${T('monthlySummary')}</div>`+_revHtml+monthSummaryHTML(mData,rate);
+  renderMonthlyReview(cur.yr,cur.mo,cT,rate);
+  document.getElementById('summary-section').innerHTML=`<div class="section-title">${T('monthlySummary')}</div>`+monthSummaryHTML(mData,rate);
 }
 
 // shared month summary (item 2: confirmed/projected columns)
@@ -952,6 +1072,7 @@ function renderWeekly(){
   renderKPIs(cT,null); renderRatios(cT);
   renderTrendChart(weeks.map(w=>w.label),weeks.map(w=>w.t),T('weeklyTrend'));
   renderDonut(cT,rate);
+  renderWeeklyReview(weeks);
   // vertical table (no scrollx)
   document.getElementById('summary-section').innerHTML=`<div class="section-title">${T('weeklySummary')} (${weeks.length})</div>
     <div class="table-wrap"><table><thead><tr><th>${T('week')}</th><th>${T('totalSales')}</th><th>${T('adSales')}</th><th>${T('organic')}</th><th>${T('adSpend')}</th><th>${T('roas')}</th><th>ACoS</th><th>${T('orders')}</th><th>${T('vsPrev')}</th></tr></thead><tbody>${
@@ -1000,6 +1121,7 @@ function getAllWeeks(data){
 
 // ──── DAILY ────────────────────────────────────────────────────────
 function renderDaily(){
+  const _rs=document.getElementById('review-section');if(_rs)_rs.innerHTML='';
   const cur=byMonth[activeMonth]; const rows=cur.rows.filter(inRange);
   const cT=rows.length?agg(rows):emptyT(); const rate=avgRate(cT);
   const sorted=rows.slice().sort((a,b)=>a.day-b.day);
@@ -1654,6 +1776,7 @@ function buildAdsBuckets(){
 }
 
 function renderAds(){
+  const _rs=document.getElementById('review-section');if(_rs)_rs.innerHTML='';
   document.getElementById('topbar-badge').textContent=isKo()?'광고 분석':'Ads';
   document.getElementById('daily-section').style.display='none';
 
