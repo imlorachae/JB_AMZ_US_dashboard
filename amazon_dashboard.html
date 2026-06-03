@@ -729,7 +729,8 @@ function selectQuarter(q){ activeQuarter=q; render(); }
 function selectMonth(k){ activeMonth=k; activeWeekIdx=null; render(); }
 function selectMonthTab(k){
   activeMonth=k; activeWeekIdx=null;
-  _syncRangeToMonth(k);
+  // monthly: chart shows all months — no range sync needed
+  if(activeTab==='weekly'||activeTab==='daily') _syncRangeToMonth(k);
   render();
 }
 function _syncRangeToMonth(k){
@@ -753,7 +754,7 @@ function setMode(m){ appMode=m; activeTab = m==='sales'?'weekly':'overview'; app
 function setTab(t){
   activeTab=t;
   if(t==='weekly'&&activeMonth==='all'){activeMonth=monthKeys[monthKeys.length-1];}
-  if(t==='monthly'||t==='daily') _syncRangeToMonth(activeMonth);
+  if(t==='daily') _syncRangeToMonth(activeMonth);
   if(t==='annual'||t==='quarter') _syncRangeToYear(activeYear);
   applyI18nStatic(); render();
 }
@@ -1211,7 +1212,8 @@ function renderWeeklyReview(weeks){
 
 // ──── MONTHLY ──────────────────────────────────────────────────────
 function renderMonthly(){
-  const cur=byMonth[activeMonth]; const rows=cur.rows.filter(inRange);
+  const cur=byMonth[activeMonth];
+  const rows=cur.rows; // raw rows — no date range filter (month button selects month directly)
   const cT=rows.length?agg(rows):emptyT(); const rate=avgRate(cT);
   const yr=cur.yr;
   document.getElementById('topbar-badge').textContent=ymName(cur.yr,cur.mo);
@@ -1220,24 +1222,27 @@ function renderMonthly(){
   renderBanner(cur,cT,rate,cd,dim,proj);
   renderKPIs(cT,null); renderRatios(cT);
   const mData=monthKeys.filter(k=>byMonth[k].yr===yr);
-  renderTrendChart(mData.map(k=>mNameS(byMonth[k].mo)),mData.map(k=>agg(byMonth[k].rows.filter(inRange))),T('monthlyTrend'));
+  const hiIdx=mData.indexOf(activeMonth);
+  renderTrendChart(mData.map(k=>mNameS(byMonth[k].mo)),mData.map(k=>agg(byMonth[k].rows)),T('monthlyTrend'),null,hiIdx);
   renderDonut(cT,rate);
   _hideWeekNav();
   renderMonthlyReview(cur.yr,cur.mo,cT,rate);
-  document.getElementById('summary-section').innerHTML=`<div class="section-title">${T('monthlySummary')}</div>`+monthSummaryHTML(mData,rate);
+  document.getElementById('summary-section').innerHTML=`<div class="section-title">${T('monthlySummary')}</div>`+monthSummaryHTML(mData,rate,activeMonth,true);
 }
 
 // shared month summary (item 2: confirmed/projected columns)
-function monthSummaryHTML(mData,rate){
+function monthSummaryHTML(mData,rate,highlightKey,useRaw){
   return `<div class="table-wrap"><table>
     <thead><tr><th>${T('month')}</th><th>${T('confSales')}</th><th>${T('projSales')}</th><th>${T('adSales')}</th><th>${T('organic')}</th><th>${T('adSpend')}</th><th>${T('roas')}</th><th>${T('troas')}</th><th>${T('orders')}</th><th>${T('vineCol')}</th></tr></thead><tbody>${
-    mData.map(k=>{const m=byMonth[k];const rr=m.rows.filter(inRange);const t=rr.length?agg(rr):emptyT();const r=avgRate(t);
+    mData.map(k=>{const m=byMonth[k];const rr=useRaw?m.rows:m.rows.filter(inRange);const t=rr.length?agg(rr):emptyT();const r=avgRate(t);
+    const isHi=highlightKey&&k===highlightKey;
     const roas=t.adSpend>0?t.adSales/t.adSpend:0,tr=t.adSpend>0?t.sales/t.adSpend:0;
     const conf=isConfirmed(m.yr,m.mo);const dim=new Date(m.yr,m.mo,0).getDate();const srt=rr.slice().sort((a,b)=>a.day-b.day);const cd=Math.max(1,srt.length-2);const proj=t.sales/cd*dim;
     // "매출" col: confirmed=actual, unconfirmed=current (what we have so far)
     const salesCell=`<strong style="color:#1d4ed8">${fmtAgg(t.sales,r.krw,r.sgd)}</strong>`;
     const projCell=conf?'—':fmtAgg(proj,r.krw,r.sgd);
-    return `<tr><td>${ymName(m.yr,m.mo)}</td>
+    const rowStyle=isHi?'outline:2px solid var(--accent);outline-offset:-2px;background:rgba(59,130,246,.05);font-weight:600;':(highlightKey?'opacity:0.55;':'');
+    return `<tr style="${rowStyle}"><td>${ymName(m.yr,m.mo)}</td>
       <td class="${conf?'pos':''}">${salesCell}</td>
       <td style="color:var(--accent)">${projCell}</td>
       <td>${fmtAgg(t.adSales,r.krw,r.sgd)}</td><td>${fmtAgg(t.organic,r.krw,r.sgd)}</td><td>${fmtAgg(t.adSpend,r.krw,r.sgd)}</td>
@@ -1527,16 +1532,14 @@ function chartOpts(){return{responsive:true,maintainAspectRatio:false,animation:
   scales:{x:{ticks:{color:'#64748b',font:{size:9},maxRotation:45},grid:{color:'#f1f5f9'}},y:{ticks:{color:'#64748b',callback:v=>{const sym=activeCurrency==='KRW'?'₩':activeCurrency==='SGD'?'S$':'$';if(v===0)return sym+'0';return Math.abs(v)>=1000?sym+Math.round(v/1000)+'k':sym+Math.round(v);}},grid:{color:'#e2e8f0'}}}
 };}
 // aggregate-based trend (currency-converted via avg rate of each bucket)
-function renderTrendChart(labels,buckets,title,overrideSales){
-  const conv=t=>({s:t.sales,a:t.adSales,o:t.organic,d:t.adSpend});
-  const cr=activeCurrency==='KRW'?1477:(activeCurrency==='SGD'?1.34:1); // approx avg for chart scale
+function renderTrendChart(labels,buckets,title,overrideSales,highlightIdx){
   const r=v=>activeCurrency==='USD'?v:(activeCurrency==='KRW'?v*1490:v*1.34);
   const salesD=(overrideSales||buckets.map(t=>t.sales)).map(r);
   const adD=buckets.map(t=>t.adSales).map(r);
   const orgD=buckets.map(t=>t.organic).map(r);
   const adSpD=buckets.map(t=>t.adSpend).map(r);
   document.getElementById('chart-main-title').textContent=title;
-  drawChart(labels,salesD,adD,orgD,adSpD,null);
+  drawChart(labels,salesD,adD,orgD,adSpD,null,highlightIdx);
 }
 function renderTrendChartRaw(labels,salesD,adD,orgD,title,sortedRows,adSpD){
   const cur=byMonth[activeMonth];const cr=cur?getRate(cur.yr,cur.mo):1;
@@ -1568,12 +1571,16 @@ function renderTrendChartRaw(labels,salesD,adD,orgD,title,sortedRows,adSpD){
     }
   });
 }
-function drawChart(labels,salesD,adD,orgD,adSpD,sortedRows){
+function drawChart(labels,salesD,adD,orgD,adSpD,sortedRows,highlightIdx){
   if(mainCI)mainCI.destroy();
   const isBar=chartType==='bar', isMix=chartType==='mix';
+  const hasHi=highlightIdx!==null&&highlightIdx!==undefined;
   const ptC=sortedRows?sortedRows.map(r=>{if(SPECIAL_EVENTS.some(e=>r.yr===e.yr&&r.mo===e.mo&&r.day>=e.day_start&&r.day<=e.day_end))return'#fb923c';if(vineMode==='exclude'&&(r.vine_adj||0)<0)return'#ef4444';return'#3b82f6'}):null;
   const ptS=sortedRows?sortedRows.map(r=>{if(SPECIAL_EVENTS.some(e=>r.yr===e.yr&&r.mo===e.mo&&r.day>=e.day_start&&r.day<=e.day_end))return 6;if(vineMode==='exclude'&&(r.vine_adj||0)<0)return 7;return 3}):null;
-  const barBg=k=>({bar:'rgba('+k+',.7)',mix:'rgba('+k+',.7)',line:'rgba('+k+',.12)'})[chartType]||'rgba('+k+',.7)';
+  const barBg=k=>{
+    if(!hasHi||(!(isBar||isMix))) return ({bar:`rgba(${k},.7)`,mix:`rgba(${k},.7)`,line:`rgba(${k},.12)`})[chartType]||`rgba(${k},.7)`;
+    return labels.map((_,i)=>i===highlightIdx?`rgba(${k},.85)`:`rgba(${k},.18)`);
+  };
   const ds=[
     {label:T('totalSales'),data:salesD,borderColor:'#3b82f6',backgroundColor:barBg('59,130,246'),fill:false,tension:.4,borderWidth:2,pointRadius:ptS||3,pointBackgroundColor:ptC||'#3b82f6',borderRadius:(isBar||isMix)?4:0},
     {label:T('adSales'),data:adD,borderColor:'#22c55e',backgroundColor:barBg('34,197,94'),fill:false,tension:.4,borderWidth:2,pointRadius:3,borderRadius:(isBar||isMix)?4:0},
