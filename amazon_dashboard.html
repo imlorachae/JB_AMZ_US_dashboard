@@ -159,7 +159,7 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,"Segoe UI"
 /* KPI (item 4) */
 .kpi-grid5{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-bottom:8px}
 .kpi-card{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:12px 14px;position:relative;overflow:hidden}
-.kpi-card::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;background:var(--kc,var(--accent))}
+.kpi-card::before{display:none}
   .kpi-lbl{font-size:15px;color:var(--muted);letter-spacing:.3px;margin-bottom:6px}
 .kpi-val{font-size:28px;font-weight:700;margin-bottom:3px}
 .kpi-vine{font-size:10px;color:var(--red);margin-bottom:3px}
@@ -1234,10 +1234,11 @@ function renderMonthly(){
 // shared month summary (item 2: confirmed/projected columns)
 function monthSummaryHTML(mData,rate,highlightKey,useRaw){
   return `<div class="table-wrap"><table>
-    <thead><tr><th>${T('month')}</th><th>${T('confSales')}</th><th>${T('projSales')}</th><th>${T('adSales')}</th><th>${T('organic')}</th><th>${T('adSpend')}</th><th>${T('roas')}</th><th>${T('troas')}</th><th>${T('orders')}</th><th>${T('vineCol')}</th></tr></thead><tbody>${
+    <thead><tr><th>${T('month')}</th><th>${T('confSales')}</th><th>${T('projSales')}</th><th>${T('adSales')}</th><th>${T('organic')}</th><th>${T('adSpend')}</th><th>${T('roas')}</th><th>${T('acos')}</th><th>${T('orders')}</th><th>${T('vineCol')}</th></tr></thead><tbody>${
     mData.map(k=>{const m=byMonth[k];const rr=useRaw?m.rows:m.rows.filter(inRange);const t=rr.length?agg(rr):emptyT();const r=avgRate(t);
     const isHi=highlightKey&&k===highlightKey;
-    const roas=t.adSpend>0?t.adSales/t.adSpend:0,tr=t.adSpend>0?t.sales/t.adSpend:0;
+    const totalRoas=t.adSpend>0?t.sales/t.adSpend:0;
+    const totalAcos=t.sales>0?t.adSpend/t.sales*100:0;
     const conf=isConfirmed(m.yr,m.mo);const dim=new Date(m.yr,m.mo,0).getDate();const srt=rr.slice().sort((a,b)=>a.day-b.day);const cd=Math.max(1,srt.length-2);const proj=t.sales/cd*dim;
     // "매출" col: confirmed=actual, unconfirmed=current (what we have so far)
     const salesCell=`<strong style="color:#1d4ed8">${fmtAgg(t.sales,r.krw,r.sgd)}</strong>`;
@@ -1247,7 +1248,7 @@ function monthSummaryHTML(mData,rate,highlightKey,useRaw){
       <td class="${conf?'pos':''}">${salesCell}</td>
       <td style="color:var(--accent)">${projCell}</td>
       <td>${fmtAgg(t.adSales,r.krw,r.sgd)}</td><td>${fmtAgg(t.organic,r.krw,r.sgd)}</td><td>${fmtAgg(t.adSpend,r.krw,r.sgd)}</td>
-      <td>${fmtRoas(roas)}</td><td>${fmtRoas(tr)}</td><td>${fmtN(t.orders)}</td>
+      <td>${fmtRoas(totalRoas)}</td><td>${fmtAcos(totalAcos)}</td><td>${fmtN(t.orders)}</td>
       <td style="color:var(--red)">${t.vineTotal<0?fmtAgg(t.vineTotal,r.krw,r.sgd):'—'}</td></tr>`;}).join('')
   }</tbody></table></div>`;
 }
@@ -1351,7 +1352,7 @@ function getAllWeeks(data){
 function renderDaily(){
   const _rs=document.getElementById('review-section');if(_rs)_rs.innerHTML='';_hideWeekNav();
   // 날짜 범위가 설정되어 있으면 rangeFrom 기준으로 activeMonth 자동 도출
-  if(rangeFrom){const _d=new Date(rangeFrom);const _mk=_d.getFullYear()+'_'+String(_d.getMonth()+1).padStart(2,'0');if(byMonth[_mk])activeMonth=_mk;}
+  if(rangeFrom){const _d=new Date(rangeFrom+'T00:00:00');const _mk=_d.getFullYear()+'.'+((_d.getMonth()+1));if(byMonth[_mk])activeMonth=_mk;}
   const cur=byMonth[activeMonth]; const rows=cur.rows.filter(inRange);
   const cT=rows.length?agg(rows):emptyT(); const rate=avgRate(cT);
   const sorted=rows.slice().sort((a,b)=>a.day-b.day);
