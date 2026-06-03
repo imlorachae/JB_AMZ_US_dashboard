@@ -703,17 +703,9 @@ function buildNavbar(){
     // year selector in year-tabs
     if(yt)yt.innerHTML=allYears.map(y=>`<button class="year-tab ${y===activeYear?'active':''}" onclick="selectYear(${y})">${y}</button>`).join('');
     tabs=[1,2,3,4].map(q=>({k:q,label:qName(q),active:q===activeQuarter,fn:`selectQuarter(${q})`}));
-  } else if(activeTab==='weekly'){
-    // year-tabs
+  } else { // weekly, monthly, daily — 월 탭 없음, 연도 탭만
     if(yt)yt.innerHTML=allYears.map(y=>`<button class="year-tab ${y===activeYear?'active':''}" onclick="selectYear(${y})">${y}</button>`).join('');
-    // month tabs for selected year: month-only labels
-    const yearMonths=monthKeys.filter(k=>byMonth[k].yr===activeYear);
-    tabs=[{k:'all',label:T('allWeeks'),active:activeMonth==='all',fn:`selectMonth('all')`}];
-    yearMonths.forEach(k=>tabs.push({k,label:mNameS(byMonth[k].mo),active:k===activeMonth,fn:`selectMonth('${k}')`}));
-  } else { // monthly, daily
-    if(yt)yt.innerHTML=allYears.map(y=>`<button class="year-tab ${y===activeYear?'active':''}" onclick="selectYear(${y})">${y}</button>`).join('');
-    const yearMonths=monthKeys.filter(k=>byMonth[k].yr===activeYear);
-    tabs=yearMonths.map(k=>({k,label:mNameS(byMonth[k].mo),active:k===activeMonth,fn:`selectMonth('${k}')`}));
+    tabs=[];
   }
   ut.innerHTML=tabs.map(t=>`<button class="unit-tab ${t.active?'active':''}" onclick="${t.fn}">${t.label}</button>`).join('');
   ut._tabs=tabs;
@@ -1247,19 +1239,12 @@ function renderWeekNavBar(weeks,localIdx){
   nb.innerHTML=`<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:8px 14px;background:var(--card);border:1px solid var(--border);border-radius:10px;margin-bottom:6px">${btn(isKo()?'◀ 이전 주':'◀ Prev',-1,atStart)}${thisBtn}${btn(isKo()?'다음 주 ▶':'Next ▶',1,atEnd)}<span style="font-size:12px;font-weight:600;color:var(--text);margin-left:4px">📅 ${focusLabel}</span><button onclick="activeWeekIdx=null;render()" style="margin-left:auto;padding:5px 12px;border:1px solid var(--border);border-radius:7px;font-size:11px;cursor:pointer;background:var(--card);color:var(--muted)">${isKo()?'전체 보기':'All Weeks'}</button></div>`;
 }
 function renderWeekly(){
-  // ① 테이블은 항상 선택된 scope의 전체 주차 표시 (activeWeekIdx가 필터 역할 안 함)
-  let weeks, scopeRows;
-  if(activeMonth==='all'){
-    scopeRows=allData; // 날짜 필터 없이 전체
-    weeks=getAllWeeks(allData);
-  } else {
-    const cur=byMonth[activeMonth];
-    scopeRows=cur.rows;
-    const dim=new Date(cur.yr,cur.mo,0).getDate();
-    weeks=buildMonthWeeks(cur.rows.slice().sort((a,b)=>a.day-b.day),dim,cur);
-  }
-  const cT=scopeRows.length?agg(scopeRows):emptyT(); const rate=avgRate(cT);
-  document.getElementById('topbar-badge').textContent=(activeMonth==='all'?T('allWeeks'):ymName(byMonth[activeMonth].yr,byMonth[activeMonth].mo))+' '+T('weekly');
+  // 날짜 범위가 있으면 그 범위, 없으면 전체 데이터
+  const scopeRows = (rangeFrom||rangeTo) ? rangedData() : allData;
+  const weeks = getAllWeeks(scopeRows);
+  const cT = scopeRows.length ? agg(scopeRows) : emptyT();
+  const rate = avgRate(cT);
+  document.getElementById('topbar-badge').textContent=T('weekly');
 
   // ② 리뷰 포커스 주 결정 (activeWeekIdx 또는 기본=마지막 주)
   let localIdx=weeks.length-1;
@@ -1329,6 +1314,8 @@ function getAllWeeks(data){
 // ──── DAILY ────────────────────────────────────────────────────────
 function renderDaily(){
   const _rs=document.getElementById('review-section');if(_rs)_rs.innerHTML='';_hideWeekNav();
+  // 날짜 범위가 설정되어 있으면 rangeFrom 기준으로 activeMonth 자동 도출
+  if(rangeFrom){const _d=new Date(rangeFrom);const _mk=_d.getFullYear()+'_'+String(_d.getMonth()+1).padStart(2,'0');if(byMonth[_mk])activeMonth=_mk;}
   const cur=byMonth[activeMonth]; const rows=cur.rows.filter(inRange);
   const cT=rows.length?agg(rows):emptyT(); const rate=avgRate(cT);
   const sorted=rows.slice().sort((a,b)=>a.day-b.day);
