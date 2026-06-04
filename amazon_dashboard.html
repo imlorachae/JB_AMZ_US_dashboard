@@ -496,8 +496,9 @@ function chg(c,p,inv){
 function inRange(d){
   if(!rangeFrom&&!rangeTo)return true;
   const dd=new Date(d.yr,d.mo-1,d.day);
-  if(rangeFrom&&dd<new Date(rangeFrom))return false;
-  if(rangeTo&&dd>new Date(rangeTo))return false;
+  // T00:00:00 강제 → 로컬 자정으로 파싱 (UTC 파싱 시 timezone 오차 방지)
+  if(rangeFrom&&dd<new Date(rangeFrom+'T00:00:00'))return false;
+  if(rangeTo&&dd>new Date(rangeTo+'T00:00:00'))return false;
   return true;
 }
 function rangedData(){ return allData.filter(inRange); }
