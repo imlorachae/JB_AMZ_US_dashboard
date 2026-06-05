@@ -450,8 +450,8 @@ function fmtAgg(usd,kr,sgd){
   return '$'+Math.round(usd).toLocaleString('en-US');
 }
 const fmtN=n=>Math.round(n||0).toLocaleString('en-US');
-const fmtRoas=n=>((n||0)).toFixed(2)+'x';
-const fmtAcos=n=>Math.round(n||0)+'%';
+const fmtRoas=n=>((n||0)).toFixed(2);
+const fmtAcos=n=>Math.round(n||0).toString();
 const toN=v=>{if(v===''||v==null)return 0;const n=parseFloat(String(v).replace(/[$,₩S%x]/g,''));return isNaN(n)?0:n;};
 
 // ──── DATEPICKER ───────────────────────────────────────────────────
@@ -951,7 +951,7 @@ function renderAnnual(){
   const yRows=rangedData().filter(d=>d.yr===yr);
   const yT=yRows.length?agg(yRows):emptyT();
   const rate=avgRate(yT);
-  const cd=Math.max(1,yRows.length-2);
+  const cd=Math.max(1,yRows.length>7?yRows.length-2:yRows.length);
   const dAvg=yT.sales/cd, proj=dAvg*365;
   document.getElementById('topbar-badge').textContent=yName(yr)+' '+T('annual');
   document.getElementById('top-banner').innerHTML=`
@@ -978,7 +978,7 @@ function renderQuarter(){
     const t=rows.length?agg(rows):emptyT(); const rate=avgRate(t);
     const conf=isConfirmed(yr,mos[2]); const empty=rows.length===0; const inProg=!conf&&!empty;
     let proj=0;
-    if(inProg){ mos.forEach(mo=>{const mr=allData.filter(d=>d.yr===yr&&d.mo===mo&&inRange(d));if(mr.length){const mt=agg(mr);const dim=new Date(yr,mo,0).getDate();const cd=Math.max(1,mr.length-2);proj+=isConfirmed(yr,mo)?mt.sales:(mt.sales/cd*dim)}}); }
+    if(inProg){ mos.forEach(mo=>{const mr=allData.filter(d=>d.yr===yr&&d.mo===mo&&inRange(d));if(mr.length){const mt=agg(mr);const dim=new Date(yr,mo,0).getDate();const cd=Math.max(1,mr.length>7?mr.length-2:mr.length);proj+=isConfirmed(yr,mo)?mt.sales:(mt.sales/cd*dim)}}); }
     return {q,mos,rows,t,rate,conf,empty,inProg,proj};
   });
   const yRows=rangedData().filter(d=>d.yr===yr);
@@ -1339,7 +1339,7 @@ function renderMonthly(){
   const yr=cur.yr;
   document.getElementById('topbar-badge').textContent=ymName(cur.yr,cur.mo);
   const sorted=rows.slice().sort((a,b)=>a.day-b.day);
-  const dim=new Date(cur.yr,cur.mo,0).getDate(); const cd=Math.max(1,sorted.length-2); const proj=cT.sales/cd*dim;
+  const dim=new Date(cur.yr,cur.mo,0).getDate(); const cd=Math.max(1,sorted.length>7?sorted.length-2:sorted.length); const proj=cT.sales/cd*dim;
   renderBanner(cur,cT,rate,cd,dim,proj);
   renderKPIs(cT,null); renderRatios(cT);
   const mData=monthKeys.filter(k=>byMonth[k].yr===yr);
@@ -1359,7 +1359,7 @@ function monthSummaryHTML(mData,rate,highlightKey,useRaw){
     const isHi=highlightKey&&k===highlightKey;
     const totalRoas=t.adSpend>0?t.sales/t.adSpend:0;
     const totalAcos=t.sales>0?t.adSpend/t.sales*100:0;
-    const conf=isConfirmed(m.yr,m.mo);const dim=new Date(m.yr,m.mo,0).getDate();const srt=rr.slice().sort((a,b)=>a.day-b.day);const cd=Math.max(1,srt.length-2);const proj=t.sales/cd*dim;
+    const conf=isConfirmed(m.yr,m.mo);const dim=new Date(m.yr,m.mo,0).getDate();const srt=rr.slice().sort((a,b)=>a.day-b.day);const cd=Math.max(1,srt.length>7?srt.length-2:srt.length);const proj=t.sales/cd*dim;
     // "매출" col: confirmed=actual, unconfirmed=current (what we have so far)
     const salesCell=`<strong style="color:#1d4ed8">${fmtAgg(t.sales,r.krw,r.sgd)}</strong>`;
     const projCell=conf?'—':fmtAgg(proj,r.krw,r.sgd);
@@ -1483,7 +1483,7 @@ function renderDaily(){
   const cur=byMonth[activeMonth]; const rows=cur.rows.filter(inRange);
   const cT=rows.length?agg(rows):emptyT(); const rate=avgRate(cT);
   const sorted=rows.slice().sort((a,b)=>a.day-b.day);
-  const dim=new Date(cur.yr,cur.mo,0).getDate();const cd=Math.max(1,sorted.length-2);const proj=cT.sales/cd*dim;
+  const dim=new Date(cur.yr,cur.mo,0).getDate();const cd=Math.max(1,sorted.length>7?sorted.length-2:sorted.length);const proj=cT.sales/cd*dim;
   document.getElementById('topbar-badge').textContent=ymName(cur.yr,cur.mo)+' '+T('daily');
   renderBanner(cur,cT,rate,cd,dim,proj);
   renderKPIs(cT,null); renderRatios(cT);
