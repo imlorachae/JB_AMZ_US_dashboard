@@ -978,7 +978,7 @@ function renderQuarter(){
     const t=rows.length?agg(rows):emptyT(); const rate=avgRate(t);
     const conf=isConfirmed(yr,mos[2]); const empty=rows.length===0; const inProg=!conf&&!empty;
     let proj=0;
-    if(inProg){ mos.forEach(mo=>{const mr=allData.filter(d=>d.yr===yr&&d.mo===mo&&inRange(d));if(mr.length){const mt=agg(mr);const dim=new Date(yr,mo,0).getDate();const cd=Math.max(1,mr.length);proj+=isConfirmed(yr,mo)?mt.sales:(mt.sales/cd*dim)}}); }
+    if(inProg){ mos.forEach(mo=>{const mr=allData.filter(d=>d.yr===yr&&d.mo===mo&&inRange(d));if(mr.length){const mt=agg(mr);const dim=new Date(yr,mo,0).getDate();proj+=isConfirmed(yr,mo)?mt.sales:calcProjSales(mt.sales,mr,yr,mo,dim)}}); }
     return {q,mos,rows,t,rate,conf,empty,inProg,proj};
   });
   const yRows=rangedData().filter(d=>d.yr===yr);
@@ -1331,6 +1331,31 @@ function renderWeeklyReview(weeks){
   );
 }
 
+// ──── PROJECTED SALES (DOW-weighted) ───────────────────────────────
+function getDowWeights(){
+  // 요일별(0=일~6=토) 상대 가중치 계산 (전체 데이터 기반)
+  const byDow=[[],[],[],[],[],[],[]];
+  allData.forEach(r=>{ if(r.sales>0){ byDow[new Date(r.yr,r.mo-1,r.day).getDay()].push(r.sales); } });
+  const avg=byDow.map(arr=>arr.length?arr.reduce((a,b)=>a+b,0)/arr.length:0);
+  const filled=avg.filter(v=>v>0);
+  if(!filled.length) return [1,1,1,1,1,1,1];
+  const overall=filled.reduce((a,b)=>a+b,0)/filled.length;
+  return avg.map(v=>v>0?v/overall:1); // 데이터 없는 요일은 가중치 1 사용
+}
+function calcProjSales(actualSales, dataRows, yr, mo, dim){
+  // 현재 달 일평균 × 요일가중치로 남은 날짜 예측 후 합산
+  if(!actualSales||!dataRows.length) return actualSales/Math.max(1,dataRows.length)*dim;
+  const today=getCaToday();
+  const dailyAvg=actualSales/dataRows.length;
+  const weights=getDowWeights();
+  let proj=actualSales;
+  for(let d=1;d<=dim;d++){
+    const dd=new Date(yr,mo-1,d);
+    if(dd>today) proj+=dailyAvg*weights[dd.getDay()];
+  }
+  return proj;
+}
+
 // ──── MONTHLY ──────────────────────────────────────────────────────
 function renderMonthly(){
   const cur=byMonth[activeMonth];
@@ -1339,7 +1364,7 @@ function renderMonthly(){
   const yr=cur.yr;
   document.getElementById('topbar-badge').textContent=ymName(cur.yr,cur.mo);
   const sorted=rows.slice().sort((a,b)=>a.day-b.day);
-  const dim=new Date(cur.yr,cur.mo,0).getDate(); const cd=Math.max(1,sorted.length); const proj=cT.sales/cd*dim;
+  const dim=new Date(cur.yr,cur.mo,0).getDate(); const cd=Math.max(1,sorted.length); const proj=calcProjSales(cT.sales,sorted,cur.yr,cur.mo,dim);
   renderBanner(cur,cT,rate,cd,dim,proj);
   renderKPIs(cT,null); renderRatios(cT);
   const mData=monthKeys.filter(k=>byMonth[k].yr===yr);
@@ -1359,7 +1384,7 @@ function monthSummaryHTML(mData,rate,highlightKey,useRaw){
     const isHi=highlightKey&&k===highlightKey;
     const totalRoas=t.adSpend>0?t.sales/t.adSpend:0;
     const totalAcos=t.sales>0?t.adSpend/t.sales*100:0;
-    const conf=isConfirmed(m.yr,m.mo);const dim=new Date(m.yr,m.mo,0).getDate();const srt=rr.slice().sort((a,b)=>a.day-b.day);const cd=Math.max(1,srt.length);const proj=t.sales/cd*dim;
+    const conf=isConfirmed(m.yr,m.mo);const dim=new Date(m.yr,m.mo,0).getDate();const srt=rr.slice().sort((a,b)=>a.day-b.day);const cd=Math.max(1,srt.length);const proj=calcProjSales(t.sales,srt,m.yr,m.mo,dim);
     // "매출" col: confirmed=actual, unconfirmed=current (what we have so far)
     const salesCell=`<strong style="color:#1d4ed8">${fmtAgg(t.sales,r.krw,r.sgd)}</strong>`;
     const projCell=conf?'—':fmtAgg(proj,r.krw,r.sgd);
@@ -1483,7 +1508,7 @@ function renderDaily(){
   const cur=byMonth[activeMonth]; const rows=cur.rows.filter(inRange);
   const cT=rows.length?agg(rows):emptyT(); const rate=avgRate(cT);
   const sorted=rows.slice().sort((a,b)=>a.day-b.day);
-  const dim=new Date(cur.yr,cur.mo,0).getDate();const cd=Math.max(1,sorted.length);const proj=cT.sales/cd*dim;
+  const dim=new Date(cur.yr,cur.mo,0).getDate();const cd=Math.max(1,sorted.length);const proj=calcProjSales(cT.sales,sorted,cur.yr,cur.mo,dim);
   document.getElementById('topbar-badge').textContent=ymName(cur.yr,cur.mo)+' '+T('daily');
   renderBanner(cur,cT,rate,cd,dim,proj);
   renderKPIs(cT,null); renderRatios(cT);
@@ -1507,8 +1532,17 @@ function renderDaily(){
     const isComplete=w.wSat&&w.wSat<caToday;
     let projCell='—';
     if(!isComplete&&w.t.sales>0){
-      const daysElapsed=Math.max(1,w.rows.filter(r=>new Date(r.yr,r.mo-1,r.day)<=caToday).length);
-      const proj=w.t.sales/daysElapsed*7;
+      const elapsedRows=w.rows.filter(r=>new Date(r.yr,r.mo-1,r.day)<=caToday);
+      const daysElapsed=Math.max(1,elapsedRows.length);
+      const dailyAvg=w.t.sales/daysElapsed;
+      const weights=getDowWeights();
+      // 남은 날(wSat까지) 요일 가중치 합산
+      let proj=w.t.sales;
+      if(w.wSun&&w.wSat){
+        for(let d=new Date(w.wSun);d<=w.wSat;d.setDate(d.getDate()+1)){
+          if(d>caToday) proj+=dailyAvg*weights[d.getDay()];
+        }
+      } else { proj=w.t.sales/daysElapsed*7; }
       projCell=`<span style="color:var(--accent)">${fmtAgg(proj,rate.krw,rate.sgd)}</span>`;
     }
     return `<tr><td>${w.label}</td><td><strong style="color:#1d4ed8">${fmtAgg(w.t.sales,rate.krw,rate.sgd)}</strong></td><td>${projCell}</td><td>${fmtAgg(w.t.organic,rate.krw,rate.sgd)}</td><td>${fmtAgg(w.t.adSales,rate.krw,rate.sgd)}</td><td>${fmtAgg(w.t.adSpend,rate.krw,rate.sgd)}</td><td>${fmtRoas(totalRoas)}</td><td>${fmtAcos(totalAcos)}</td><td>${fmtRoas(adRoas)}</td><td>${adAcos>0?fmtAcos(adAcos):'—'}</td><td>${fmtN(w.t.orders)}</td></tr>`;}).join('')}</tbody></table></div>`;
