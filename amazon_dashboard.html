@@ -189,7 +189,7 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,"Segoe UI"
 .section-title{font-size:14px;font-weight:600;margin-bottom:7px;display:flex;align-items:center;gap:5px}
 .table-wrap{background:var(--card);border:1px solid var(--border);border-radius:10px;overflow:hidden;margin-bottom:12px}
 .daily-sticky{max-height:672px;overflow-y:auto;border-radius:10px;border:1px solid var(--border);background:var(--card);margin-bottom:12px}
-.daily-sticky thead th{position:sticky;top:0;z-index:10;background:#dbeafe;color:#1e40af}
+.daily-sticky thead th{position:sticky;top:0;z-index:10;background:var(--card2);color:var(--text);border-bottom:1px solid var(--border)}
 .table-wrap.scrollx{overflow-x:auto}
 .col-date{white-space:nowrap;width:56px!important;padding-right:2px!important}
 .col-dow{width:34px!important;padding-left:2px!important;text-align:center!important}
@@ -451,7 +451,7 @@ function fmtAgg(usd,kr,sgd){
 }
 const fmtN=n=>Math.round(n||0).toLocaleString('en-US');
 const fmtRoas=n=>((n||0)*100).toFixed(0)+'%';
-const fmtAcos=n=>Math.round(n||0).toString();
+const fmtAcos=n=>Math.round(n||0)+'%';
 const toN=v=>{if(v===''||v==null)return 0;const n=parseFloat(String(v).replace(/[$,₩S%x]/g,''));return isNaN(n)?0:n;};
 
 // ──── DATEPICKER ───────────────────────────────────────────────────
@@ -996,9 +996,14 @@ function renderQuarter(){
   // item 3: drilldown for active quarter
   const aq=quarters.find(q=>q.q===activeQuarter);
   let html=`<div class="section-title">${T('quarterSummary')}</div><div class="table-wrap"><table>
-    <thead><tr><th>${T('quarterCol')}</th><th>${T('status')}</th><th>${T('totalSales')}</th><th>${T('adSales')}</th><th>${T('organic')}</th><th>${T('adSpend')}</th><th>${T('roas')}</th><th>${T('troas')}</th><th>${T('orders')}</th></tr></thead><tbody>${
-    valid.map(q=>{const roas=q.t.adSpend>0?q.t.adSales/q.t.adSpend:0,tr=q.t.adSpend>0?q.t.sales/q.t.adSpend:0;const val=q.conf?q.t.sales:q.proj;const st=q.conf?`<span class="badge badge-up">${T('confirmed')}</span>`:`<span class="badge badge-neu">${T('projected')}</span>`;
-    return `<tr style="${q.q===activeQuarter?'outline:1px solid var(--yellow);outline-offset:-1px':''}"><td>${qName(q.q)}</td><td>${st}</td><td>${fmtAgg(val,q.rate.krw,q.rate.sgd)}</td><td>${fmtAgg(q.t.adSales,q.rate.krw,q.rate.sgd)}</td><td>${fmtAgg(q.t.organic,q.rate.krw,q.rate.sgd)}</td><td>${fmtAgg(q.t.adSpend,q.rate.krw,q.rate.sgd)}</td><td>${fmtRoas(roas)}</td><td>${fmtRoas(tr)}</td><td>${fmtN(q.t.orders)}</td></tr>`;}).join('')
+    <thead><tr><th>${T('quarterCol')}</th><th>${T('status')}</th><th>${T('totalSales')}</th><th>${T('projSales')}</th><th>${T('organic')}</th><th>${T('adSales')}</th><th>${T('adSpend')}</th><th>${T('roas')}</th><th>${T('acos')}</th><th>${T('orders')}</th></tr></thead><tbody>${
+    valid.map(q=>{
+      const totalRoas=q.t.adSpend>0?q.t.sales/q.t.adSpend:0;
+      const totalAcos=q.t.sales>0?q.t.adSpend/q.t.sales*100:0;
+      const val=q.conf?q.t.sales:q.proj;
+      const proj=q.conf?'—':fmtAgg(q.proj,q.rate.krw,q.rate.sgd);
+      const st=q.conf?`<span class="badge badge-up">${T('confirmed')}</span>`:`<span class="badge badge-neu">${T('projected')}</span>`;
+      return `<tr style="${q.q===activeQuarter?'outline:1px solid var(--yellow);outline-offset:-1px':''}"><td>${qName(q.q)}</td><td>${st}</td><td><strong style="color:#1d4ed8">${fmtAgg(val,q.rate.krw,q.rate.sgd)}</strong></td><td style="color:var(--accent)">${proj}</td><td>${fmtAgg(q.t.organic,q.rate.krw,q.rate.sgd)}</td><td>${fmtAgg(q.t.adSales,q.rate.krw,q.rate.sgd)}</td><td>${fmtAgg(q.t.adSpend,q.rate.krw,q.rate.sgd)}</td><td>${fmtRoas(totalRoas)}</td><td>${fmtAcos(totalAcos)}</td><td>${fmtN(q.t.orders)}</td></tr>`;}).join('')
   }</tbody></table></div>`;
   if(aq&&!aq.empty){
     const mData=monthKeys.filter(k=>byMonth[k].yr===yr&&aq.mos.includes(byMonth[k].mo));
@@ -1349,7 +1354,7 @@ function renderMonthly(){
 // shared month summary (item 2: confirmed/projected columns)
 function monthSummaryHTML(mData,rate,highlightKey,useRaw){
   return `<div class="table-wrap"><table>
-    <thead><tr><th>${T('month')}</th><th>${T('confSales')}</th><th>${T('projSales')}</th><th>${T('adSales')}</th><th>${T('organic')}</th><th>${T('adSpend')}</th><th>${T('roas')}</th><th>${T('acos')}</th><th>${T('orders')}</th><th>${T('vineCol')}</th></tr></thead><tbody>${
+    <thead><tr><th>${T('month')}</th><th>${T('confSales')}</th><th>${T('projSales')}</th><th>${T('organic')}</th><th>${T('adSales')}</th><th>${T('adSpend')}</th><th>${T('roas')}</th><th>${T('acos')}</th><th>${T('orders')}</th><th>${T('vineCol')}</th></tr></thead><tbody>${
     mData.map(k=>{const m=byMonth[k];const rr=useRaw?m.rows:m.rows.filter(inRange);const t=rr.length?agg(rr):emptyT();const r=avgRate(t);
     const isHi=highlightKey&&k===highlightKey;
     const totalRoas=t.adSpend>0?t.sales/t.adSpend:0;
@@ -1362,7 +1367,7 @@ function monthSummaryHTML(mData,rate,highlightKey,useRaw){
     return `<tr style="${rowStyle}"><td>${ymName(m.yr,m.mo)}</td>
       <td class="${conf?'pos':''}">${salesCell}</td>
       <td style="color:var(--accent)">${projCell}</td>
-      <td>${fmtAgg(t.adSales,r.krw,r.sgd)}</td><td>${fmtAgg(t.organic,r.krw,r.sgd)}</td><td>${fmtAgg(t.adSpend,r.krw,r.sgd)}</td>
+      <td>${fmtAgg(t.organic,r.krw,r.sgd)}</td><td>${fmtAgg(t.adSales,r.krw,r.sgd)}</td><td>${fmtAgg(t.adSpend,r.krw,r.sgd)}</td>
       <td>${fmtRoas(totalRoas)}</td><td>${fmtAcos(totalAcos)}</td><td>${fmtN(t.orders)}</td>
       <td style="color:var(--red)">${t.vineTotal<0?fmtAgg(t.vineTotal,r.krw,r.sgd):'—'}</td></tr>`;}).join('')
   }</tbody></table></div>`;
@@ -1417,12 +1422,19 @@ function renderWeekly(){
   // ③ 테이블: 전체 주차 표시, 포커스 주 하이라이트
   const fLabel=focusedWeek?.label;
   document.getElementById('summary-section').innerHTML=`<div class="section-title">${T('weeklySummary')} (${weeks.length})</div>
-    <div class="table-wrap"><table><thead><tr><th>${T('week')}</th><th>${T('totalSales')}</th><th>${T('adSales')}</th><th>${T('organic')}</th><th>${T('adSpend')}</th><th>${T('roas')}</th><th>ACoS</th><th>${T('orders')}</th><th>${T('vsPrev')}</th></tr></thead><tbody>${
-    weeks.map((w,i)=>{const roas=w.t.adSpend>0?w.t.adSales/w.t.adSpend:0;const pv=weeks[i-1];const hc=w.t.sales>0,hp=pv&&pv.t.sales>0;const{cls,txt}=(hc&&hp)?chg(w.t.sales,pv.t.sales,false):{cls:'neutral',txt:'—'};const bc=cls==='up'?'badge-up':cls==='down'?'badge-down':'badge-neu';
-    const crossNote=w.crossMonth?` <span style="font-size:10px;color:#64748b">(전월 포함)</span>`:'';
-    const isFocus=w.label===fLabel;
-    const rowStyle=(isFocus?'outline:2px solid var(--accent);outline-offset:-2px;':'')+(w.crossMonth?'background:#fafafa;':'');
-    return `<tr style="${rowStyle}"><td>${w.label}${crossNote}</td><td><strong style="color:#1d4ed8">${fmtAgg(w.t.sales,rate.krw,rate.sgd)}</strong></td><td>${fmtAgg(w.t.adSales,rate.krw,rate.sgd)}</td><td>${fmtAgg(w.t.organic,rate.krw,rate.sgd)}</td><td>${fmtAgg(w.t.adSpend,rate.krw,rate.sgd)}</td><td>${fmtRoas(roas)}</td><td>${w.t.adSales>0?fmtAcos(w.t.adSpend/w.t.adSales*100):'—'}</td><td>${fmtN(w.t.orders)}</td><td><span class="badge ${bc}">${txt}</span></td></tr>`;}).join('')
+    <div class="table-wrap"><table><thead><tr><th>${T('week')}</th><th>${T('totalSales')}</th><th>${T('organic')}</th><th>${T('adSales')}</th><th>${T('adSpend')}</th><th>${T('roas')}</th><th>${T('acos')}</th><th>${T('troas')}</th><th>${T('tacos')}</th><th>${T('orders')}</th><th>${T('vsPrev')}</th></tr></thead><tbody>${
+    weeks.map((w,i)=>{
+      const totalRoas=w.t.adSpend>0?w.t.sales/w.t.adSpend:0;
+      const totalAcos=w.t.sales>0?w.t.adSpend/w.t.sales*100:0;
+      const adRoas=w.t.adSpend>0?w.t.adSales/w.t.adSpend:0;
+      const adAcos=w.t.adSales>0?w.t.adSpend/w.t.adSales*100:0;
+      const pv=weeks[i-1];const hc=w.t.sales>0,hp=pv&&pv.t.sales>0;
+      const{cls,txt}=(hc&&hp)?chg(w.t.sales,pv.t.sales,false):{cls:'neutral',txt:'—'};
+      const bc=cls==='up'?'badge-up':cls==='down'?'badge-down':'badge-neu';
+      const crossNote=w.crossMonth?` <span style="font-size:10px;color:#64748b">(전월 포함)</span>`:'';
+      const isFocus=w.label===fLabel;
+      const rowStyle=(isFocus?'outline:2px solid var(--accent);outline-offset:-2px;':'')+(w.crossMonth?'background:#fafafa;':'');
+      return `<tr style="${rowStyle}"><td>${w.label}${crossNote}</td><td><strong style="color:#1d4ed8">${fmtAgg(w.t.sales,rate.krw,rate.sgd)}</strong></td><td>${fmtAgg(w.t.organic,rate.krw,rate.sgd)}</td><td>${fmtAgg(w.t.adSales,rate.krw,rate.sgd)}</td><td>${fmtAgg(w.t.adSpend,rate.krw,rate.sgd)}</td><td>${fmtRoas(totalRoas)}</td><td>${fmtAcos(totalAcos)}</td><td>${fmtRoas(adRoas)}</td><td>${adAcos>0?fmtAcos(adAcos):'—'}</td><td>${fmtN(w.t.orders)}</td><td><span class="badge ${bc}">${txt}</span></td></tr>`;}).join('')
   }</tbody></table></div>`;
 }
 function buildMonthWeeks(sortedInMonth,dim,cur){
@@ -1479,16 +1491,23 @@ function renderDaily(){
   const adD=sorted.map(r=>r.adSales);
   const orgD=sorted.map(r=>r.organic+(vineMode==='exclude'?(r.vine_adj||0):0));
   const adSpD=sorted.map(r=>r.adSpend);
-  renderTrendChartRaw(sorted.map(r=>r.mo+'/'+r.day),salesD,adD,orgD,T('dailyTrend'),sorted,adSpD);
+  // Daily 차트: 다른 탭과 동일한 양식 사용
+  const buckets=sorted.map((r,i)=>({sales:salesD[i],adSales:r.adSales,organic:orgD[i],adSpend:r.adSpend}));
+  renderTrendChart(sorted.map(r=>r.mo+'/'+r.day),buckets,T('dailyTrend'));
   renderDonut(cT,rate);
-  // weekly mini summary
+  // weekly mini summary — Weekly와 동일한 컬럼
   const weeks=buildMonthWeeks(sorted,dim,cur);
-  document.getElementById('summary-section').innerHTML=`<div class="section-title">${T('weeklySummary')}</div><div class="table-wrap"><table><thead><tr><th>${T('week')}</th><th>${T('totalSales')}</th><th>${T('adSales')}</th><th>${T('organic')}</th><th>${T('adSpend')}</th><th>${T('roas')}</th><th>${T('orders')}</th></tr></thead><tbody>${weeks.map(w=>{const roas=w.t.adSpend>0?w.t.adSales/w.t.adSpend:0;return `<tr><td>${w.label}</td><td>${fmtAgg(w.t.sales,rate.krw,rate.sgd)}</td><td>${fmtAgg(w.t.adSales,rate.krw,rate.sgd)}</td><td>${fmtAgg(w.t.organic,rate.krw,rate.sgd)}</td><td>${fmtAgg(w.t.adSpend,rate.krw,rate.sgd)}</td><td>${fmtRoas(roas)}</td><td>${fmtN(w.t.orders)}</td></tr>`;}).join('')}</tbody></table></div>`;
+  document.getElementById('summary-section').innerHTML=`<div class="section-title">${T('weeklySummary')}</div><div class="table-wrap"><table><thead><tr><th>${T('week')}</th><th>${T('totalSales')}</th><th>${T('organic')}</th><th>${T('adSales')}</th><th>${T('adSpend')}</th><th>${T('roas')}</th><th>${T('acos')}</th><th>${T('troas')}</th><th>${T('tacos')}</th><th>${T('orders')}</th></tr></thead><tbody>${weeks.map(w=>{
+    const totalRoas=w.t.adSpend>0?w.t.sales/w.t.adSpend:0;
+    const totalAcos=w.t.sales>0?w.t.adSpend/w.t.sales*100:0;
+    const adRoas=w.t.adSpend>0?w.t.adSales/w.t.adSpend:0;
+    const adAcos=w.t.adSales>0?w.t.adSpend/w.t.adSales*100:0;
+    return `<tr><td>${w.label}</td><td><strong style="color:#1d4ed8">${fmtAgg(w.t.sales,rate.krw,rate.sgd)}</strong></td><td>${fmtAgg(w.t.organic,rate.krw,rate.sgd)}</td><td>${fmtAgg(w.t.adSales,rate.krw,rate.sgd)}</td><td>${fmtAgg(w.t.adSpend,rate.krw,rate.sgd)}</td><td>${fmtRoas(totalRoas)}</td><td>${fmtAcos(totalAcos)}</td><td>${fmtRoas(adRoas)}</td><td>${adAcos>0?fmtAcos(adAcos):'—'}</td><td>${fmtN(w.t.orders)}</td></tr>`;}).join('')}</tbody></table></div>`;
   // daily detail
   const hasEvt=SPECIAL_EVENTS.some(e=>e.yr===cur.yr&&e.mo===cur.mo);
   const evtNote=hasEvt?SPECIAL_EVENTS.filter(e=>e.yr===cur.yr&&e.mo===cur.mo).map(e=>`<div class="evt-note">⚠️ ${T('idVerify')}: ${e.yr}/${e.mo}/${e.day_start}~${e.day_end}</div>`).join(''):'';
   document.getElementById('daily-section').innerHTML=`${evtNote}<div class="section-title">${T('dailyDetail')}</div>
-    <div class="daily-sticky"><table><thead><tr><th style="text-align:left;width:56px">${T('date')}</th><th style="width:34px">${T('dow')}</th><th>${T('totalSales')}</th><th>${T('adSales')}</th><th>${T('organic')}</th><th>${T('adSpend')}</th><th>${T('roas')}</th><th>${T('acos')}</th><th>${T('orders')}</th><th>${T('session')}</th></tr></thead><tbody>${dailyRowsHTML(sorted,rate,cur)}</tbody></table></div>`;
+    <div class="daily-sticky"><table><thead><tr><th style="text-align:left;width:56px">${T('date')}</th><th style="width:34px">${T('dow')}</th><th>${T('totalSales')}</th><th>${T('organic')}</th><th>${T('adSales')}</th><th>${T('adSpend')}</th><th>${T('roas')}</th><th>${T('acos')}</th><th>${T('troas')}</th><th>${T('tacos')}</th><th>${T('orders')}</th><th>${T('session')}</th></tr></thead><tbody>${dailyRowsHTML(sorted,rate,cur)}</tbody></table></div>`;
 }
 function dailyRowsHTML(rows,rate,cur){
   const vd=new Set(VINE_ITEMS.filter(v=>v.yr===cur.yr&&v.mo===cur.mo).map(v=>v.day));
@@ -1496,13 +1515,15 @@ function dailyRowsHTML(rows,rate,cur){
   rows.forEach(r=>{
     const ua=vineMode==='exclude';
     const aS=ua?r.sales+(r.vine_adj||0):r.sales, aO=ua?r.organic+(r.vine_adj||0):r.organic;
-    const roas=r.adSpend>0?r.adSales/r.adSpend:0, acos=r.adSales>0?r.adSpend/r.adSales*100:0;
+    const totalRoas=r.adSpend>0?r.sales/r.adSpend:0, totalAcos=r.sales>0?r.adSpend/r.sales*100:0;
+    const adRoas=r.adSpend>0?r.adSales/r.adSpend:0, adAcos=r.adSales>0?r.adSpend/r.adSales*100:0;
     const dk=dowName(r.dow);
-    const isSun=['일','Sun'].includes(dk), isSat=['토','Sat'].includes(dk), we=isSun||isSat;
+    const isSun=['일','Sun'].includes(dk), isSat=['토','Sat'].includes(dk);
     const evt=SPECIAL_EVENTS.find(e=>e.yr===r.yr&&e.mo===r.mo&&r.day>=e.day_start&&r.day<=e.day_end);
-    const rc=roas>=2?'pos':roas>=1?'':roas>0?'neg':'dim', ac=acos>0&&acos<30?'pos':acos<50?'':acos>0?'neg':'dim';
+    const rc=totalRoas>=2?'pos':totalRoas>=1?'':totalRoas>0?'neg':'dim';
+    const ac=totalAcos>0&&totalAcos<50?'pos':totalAcos<80?'':totalAcos>0?'neg':'dim';
     const tag=evt?` <span style="font-size:9px;color:#fb923c;border:1px solid rgba(251,146,60,.5);border-radius:3px;padding:0 3px">⚠️ ${T('idVerify')}</span>`:'';
-    const MB='background:#EBF3FF;'; html+=`<tr style="${evt?'background:rgba(251,146,60,.06)':''}"><td class="col-date">${r.mo}/${r.day}${tag}</td><td class="col-dow" style="text-align:center;color:${isSun?'var(--red)':isSat?'#2563eb':'var(--muted)'}">${dk}</td><td style="${MB}font-weight:600;color:${aS<0?'var(--red)':'#1d4ed8'}">${fmtAgg(aS,rate.krw,rate.sgd)}</td><td style="${MB}color:${r.adSales<0?'var(--red)':''}">${fmtAgg(r.adSales,rate.krw,rate.sgd)}</td><td style="${MB}color:${aO<0?'var(--red)':''}">${fmtAgg(aO,rate.krw,rate.sgd)}</td><td style="${MB}color:${r.adSpend>0?'var(--text)':'var(--muted)'}">${fmtAgg(r.adSpend,rate.krw,rate.sgd)}</td><td class="${rc}">${fmtRoas(roas)}</td><td class="${ac}">${acos>0?fmtAcos(acos):'—'}</td><td>${fmtN(r.orders)}</td><td>${fmtN(r.sessions)}</td></tr>`;
+    html+=`<tr style="${evt?'background:rgba(251,146,60,.06)':''}"><td class="col-date">${r.mo}/${r.day}${tag}</td><td class="col-dow" style="text-align:center;color:${isSun?'var(--red)':isSat?'#2563eb':'var(--muted)'}">${dk}</td><td style="font-weight:600;color:${aS<0?'var(--red)':'#1d4ed8'}">${fmtAgg(aS,rate.krw,rate.sgd)}</td><td style="color:${aO<0?'var(--red)':''}">${fmtAgg(aO,rate.krw,rate.sgd)}</td><td style="color:${r.adSales<0?'var(--red)':''}">${fmtAgg(r.adSales,rate.krw,rate.sgd)}</td><td style="color:${r.adSpend>0?'var(--text)':'var(--muted)'}">${fmtAgg(r.adSpend,rate.krw,rate.sgd)}</td><td class="${rc}">${fmtRoas(totalRoas)}</td><td class="${ac}">${totalAcos>0?fmtAcos(totalAcos):'—'}</td><td>${adRoas>0?fmtRoas(adRoas):'—'}</td><td>${adAcos>0?fmtAcos(adAcos):'—'}</td><td>${fmtN(r.orders)}</td><td>${fmtN(r.sessions)}</td></tr>`;
     if(vd.has(r.day)){VINE_ITEMS.filter(v=>v.yr===r.yr&&v.mo===r.mo&&v.day===r.day).forEach(v=>{html+=`<tr class="vine-row"><td colspan="10"><span class="vine-badge">🌿 VINE</span> ${v.desc} — ${fmtAgg(v.adj,rate.krw,rate.sgd)}</td></tr>`;});}
   });
   return html;
