@@ -913,17 +913,20 @@ function render(){
 // ──── KPI (item 4) ─────────────────────────────────────────────────
 function renderKPIs(cT,pT){
   const r=avgRate(cT);
+  const adPct=cT.sales>0?(cT.adSales/cT.sales*100).toFixed(1)+'%':'';
+  const orgPct=cT.sales>0?(cT.organic/cT.sales*100).toFixed(1)+'%':'';
   const cards=[
     {lb:T('totalSales'),val:fmtAgg(cT.sales,r.krw,r.sgd),c:cT.sales,p:pT?.sales,inv:false,kc:'#3b82f6',vine:cT.vineTotal},
-    {lb:T('adSales'),val:fmtAgg(cT.adSales,r.krw,r.sgd),c:cT.adSales,p:pT?.adSales,inv:false,kc:'#f97316'},
-    {lb:T('organic'),val:fmtAgg(cT.organic,r.krw,r.sgd),c:cT.organic,p:pT?.organic,inv:false,kc:'#06b6d4',vine:cT.vineTotal},
+    {lb:T('adSales'),val:fmtAgg(cT.adSales,r.krw,r.sgd),c:cT.adSales,p:pT?.adSales,inv:false,kc:'#f97316',pct:adPct},
+    {lb:T('organic'),val:fmtAgg(cT.organic,r.krw,r.sgd),c:cT.organic,p:pT?.organic,inv:false,kc:'#06b6d4',vine:cT.vineTotal,pct:orgPct},
     {lb:T('orders'),val:fmtN(cT.orders),c:cT.orders,p:pT?.orders,inv:false,kc:'#22c55e'},
     {lb:T('items'),val:fmtN(cT.items),c:cT.items,p:pT?.items,inv:false,kc:'#a855f7'},
   ];
   document.getElementById('kpi-row1').innerHTML=cards.map((k,i)=>{
     const {cls,txt}=chg(k.c,k.p,k.inv);
     const vine=(vineMode==='include'&&k.vine&&k.vine<0)?`<div class="kpi-vine">🌿 Vine ${fmtAgg(k.vine,r.krw,r.sgd)}</div>`:'';
-    const isTotal=i===0;return `<div class="kpi-card" style="--kc:${k.kc}${isTotal?';border-top-width:4px':''}"><div class="kpi-lbl">${k.lb}</div><div class="kpi-val" style="${isTotal?'font-weight:800;color:#1d4ed8':''};">${k.val}</div>${vine}<div class="kpi-chg ${cls}">${txt}</div></div>`;
+    const pctBadge=k.pct?`<span style="font-size:11px;font-weight:500;color:var(--muted);margin-left:5px">(${k.pct})</span>`:'';
+    const isTotal=i===0;return `<div class="kpi-card" style="--kc:${k.kc}${isTotal?';border-top-width:4px':''}"><div class="kpi-lbl">${k.lb}</div><div class="kpi-val" style="${isTotal?'font-weight:800;color:#1d4ed8':''};">${k.val}${pctBadge}</div>${vine}<div class="kpi-chg ${cls}">${txt}</div></div>`;
   }).join('');
   // row2: ad spend (item 4)
   const {cls,txt}=chg(cT.adSpend,pT?.adSpend,true);
