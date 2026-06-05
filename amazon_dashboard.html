@@ -1335,7 +1335,8 @@ function renderWeeklyReview(weeks){
 function getDowWeights(){
   // 요일별(0=일~6=토) 상대 가중치 계산 (전체 데이터 기반)
   const byDow=[[],[],[],[],[],[],[]];
-  allData.forEach(r=>{ if(r.sales>0){ byDow[new Date(r.yr,r.mo-1,r.day).getDay()].push(r.sales); } });
+  // 4월 이후 데이터만 사용 (광고 안정화 이후)
+  allData.forEach(r=>{ if(r.sales>0&&(r.yr>2026||(r.yr===2026&&r.mo>=4))){ byDow[new Date(r.yr,r.mo-1,r.day).getDay()].push(r.sales); } });
   const avg=byDow.map(arr=>arr.length?arr.reduce((a,b)=>a+b,0)/arr.length:0);
   const filled=avg.filter(v=>v>0);
   if(!filled.length) return [1,1,1,1,1,1,1];
