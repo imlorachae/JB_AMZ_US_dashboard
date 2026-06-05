@@ -1459,7 +1459,7 @@ function buildMonthWeeks(sortedInMonth,dim,cur){
       const gwd=getGlobalWeek(weekSunDate);
       const label=`${isKo()?'W'+gwd+'주':'W'+String(gwd).padStart(2,'0')} (${fr.mo}/${fr.day}~${lr.mo}/${lr.day})`;
       // Mark which rows are from another month
-      weeks.push({label,t:agg(fullRows),rows:fullRows,crossMonth:fullRows.some(r=>r.mo!==mo)});
+      weeks.push({label,t:agg(fullRows),rows:fullRows,crossMonth:fullRows.some(r=>r.mo!==mo),wSun:weekSunDate,wSat:weekSatDate});
     }
     wStart+=7;
   }
@@ -1497,12 +1497,21 @@ function renderDaily(){
   renderDonut(cT,rate);
   // weekly mini summary — Weekly와 동일한 컬럼
   const weeks=buildMonthWeeks(sorted,dim,cur);
-  document.getElementById('summary-section').innerHTML=`<div class="section-title">${T('weeklySummary')}</div><div class="table-wrap"><table><thead><tr><th>${T('week')}</th><th>${T('totalSales')}</th><th>${T('organic')}</th><th>${T('adSales')}</th><th>${T('adSpend')}</th><th>${T('roas')}</th><th>${T('acos')}</th><th>${T('troas')}</th><th>${T('tacos')}</th><th>${T('orders')}</th></tr></thead><tbody>${weeks.map(w=>{
+  const caToday=getCaToday();
+  document.getElementById('summary-section').innerHTML=`<div class="section-title">${T('weeklySummary')}</div><div class="table-wrap"><table><thead><tr><th>${T('week')}</th><th>${T('totalSales')}</th><th>${T('projSales')}</th><th>${T('organic')}</th><th>${T('adSales')}</th><th>${T('adSpend')}</th><th>${T('roas')}</th><th>${T('acos')}</th><th>${T('troas')}</th><th>${T('tacos')}</th><th>${T('orders')}</th></tr></thead><tbody>${weeks.map(w=>{
     const totalRoas=w.t.adSpend>0?w.t.sales/w.t.adSpend:0;
     const totalAcos=w.t.sales>0?w.t.adSpend/w.t.sales*100:0;
     const adRoas=w.t.adSpend>0?w.t.adSales/w.t.adSpend:0;
     const adAcos=w.t.adSales>0?w.t.adSpend/w.t.adSales*100:0;
-    return `<tr><td>${w.label}</td><td><strong style="color:#1d4ed8">${fmtAgg(w.t.sales,rate.krw,rate.sgd)}</strong></td><td>${fmtAgg(w.t.organic,rate.krw,rate.sgd)}</td><td>${fmtAgg(w.t.adSales,rate.krw,rate.sgd)}</td><td>${fmtAgg(w.t.adSpend,rate.krw,rate.sgd)}</td><td>${fmtRoas(totalRoas)}</td><td>${fmtAcos(totalAcos)}</td><td>${fmtRoas(adRoas)}</td><td>${adAcos>0?fmtAcos(adAcos):'—'}</td><td>${fmtN(w.t.orders)}</td></tr>`;}).join('')}</tbody></table></div>`;
+    // 예상 매출: 주가 완료됐으면 — , 진행 중이면 일평균×7
+    const isComplete=w.wSat&&w.wSat<caToday;
+    let projCell='—';
+    if(!isComplete&&w.t.sales>0){
+      const daysElapsed=Math.max(1,w.rows.filter(r=>new Date(r.yr,r.mo-1,r.day)<=caToday).length);
+      const proj=w.t.sales/daysElapsed*7;
+      projCell=`<span style="color:var(--accent)">${fmtAgg(proj,rate.krw,rate.sgd)}</span>`;
+    }
+    return `<tr><td>${w.label}</td><td><strong style="color:#1d4ed8">${fmtAgg(w.t.sales,rate.krw,rate.sgd)}</strong></td><td>${projCell}</td><td>${fmtAgg(w.t.organic,rate.krw,rate.sgd)}</td><td>${fmtAgg(w.t.adSales,rate.krw,rate.sgd)}</td><td>${fmtAgg(w.t.adSpend,rate.krw,rate.sgd)}</td><td>${fmtRoas(totalRoas)}</td><td>${fmtAcos(totalAcos)}</td><td>${fmtRoas(adRoas)}</td><td>${adAcos>0?fmtAcos(adAcos):'—'}</td><td>${fmtN(w.t.orders)}</td></tr>`;}).join('')}</tbody></table></div>`;
   // daily detail
   const hasEvt=SPECIAL_EVENTS.some(e=>e.yr===cur.yr&&e.mo===cur.mo);
   const evtNote=hasEvt?SPECIAL_EVENTS.filter(e=>e.yr===cur.yr&&e.mo===cur.mo).map(e=>`<div class="evt-note">⚠️ ${T('idVerify')}: ${e.yr}/${e.mo}/${e.day_start}~${e.day_end}</div>`).join(''):'';
