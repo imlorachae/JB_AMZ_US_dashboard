@@ -450,7 +450,7 @@ function fmtAgg(usd,kr,sgd){
   return '$'+Math.round(usd).toLocaleString('en-US');
 }
 const fmtN=n=>Math.round(n||0).toLocaleString('en-US');
-const fmtRoas=n=>((n||0)*100).toFixed(0)+'%';
+const fmtRoas=n=>((n||0)).toFixed(2)+'x';
 const fmtAcos=n=>Math.round(n||0)+'%';
 const toN=v=>{if(v===''||v==null)return 0;const n=parseFloat(String(v).replace(/[$,₩S%x]/g,''));return isNaN(n)?0:n;};
 
@@ -1000,7 +1000,7 @@ function renderQuarter(){
     valid.map(q=>{
       const totalRoas=q.t.adSpend>0?q.t.sales/q.t.adSpend:0;
       const totalAcos=q.t.sales>0?q.t.adSpend/q.t.sales*100:0;
-      const val=q.conf?q.t.sales:q.proj;
+      const val=q.t.sales; // 항상 실제 입력된 매출 사용
       const proj=q.conf?'—':fmtAgg(q.proj,q.rate.krw,q.rate.sgd);
       const st=q.conf?`<span class="badge badge-up">${T('confirmed')}</span>`:`<span class="badge badge-neu">${T('projected')}</span>`;
       return `<tr style="${q.q===activeQuarter?'outline:1px solid var(--yellow);outline-offset:-1px':''}"><td>${qName(q.q)}</td><td>${st}</td><td><strong style="color:#1d4ed8">${fmtAgg(val,q.rate.krw,q.rate.sgd)}</strong></td><td style="color:var(--accent)">${proj}</td><td>${fmtAgg(q.t.organic,q.rate.krw,q.rate.sgd)}</td><td>${fmtAgg(q.t.adSales,q.rate.krw,q.rate.sgd)}</td><td>${fmtAgg(q.t.adSpend,q.rate.krw,q.rate.sgd)}</td><td>${fmtRoas(totalRoas)}</td><td>${fmtAcos(totalAcos)}</td><td>${fmtN(q.t.orders)}</td></tr>`;}).join('')
