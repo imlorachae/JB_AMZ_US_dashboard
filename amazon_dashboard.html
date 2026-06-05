@@ -699,9 +699,10 @@ function buildNavbar(){
   let tabs=[];
 
   if(activeTab==='annual'){
-    // year selector = unit tabs
+    // year selector = unit tabs + 시뮬레이션 버튼
     if(yt)yt.innerHTML='';
-    tabs=allYears.map(y=>({k:y,label:yName(y),active:y===activeYear,fn:`selectYear(${y})`}));
+    tabs=allYears.map(y=>({k:y,label:yName(y),active:y===activeYear&&!simMode,fn:`selectYear(${y})`}));
+    tabs.push({k:'sim',label:activeYear+'(E)',active:simMode,fn:'enterSimMode()'});
   } else if(activeTab==='quarter'){
     // year selector in year-tabs
     if(yt)yt.innerHTML=allYears.map(y=>`<button class="year-tab ${y===activeYear?'active':''}" onclick="selectYear(${y})">${y}</button>`).join('');
@@ -884,6 +885,164 @@ async function triggerAIGenerate(id){
   }
 }
 
+// ──── ANNUAL SIMULATION ────────────────────────────────────────────
+let simMode=false, simData={};
+
+function enterSimMode(){ simMode=true; if(!Object.keys(simData).length) initSimData(); render(); }
+function exitSimMode(){ simMode=false; render(); }
+function resetSimData(){ initSimData(); renderSimulation(); }
+
+function initSimData(){
+  simData={};
+  const yr=activeYear;
+  const ymKeys=monthKeys.filter(k=>byMonth[k].yr===yr);
+  const confirmed=ymKeys.filter(k=>isConfirmed(byMonth[k].yr,byMonth[k].mo));
+
+  // 최근 3개 확정 월 평균 (추이 기반 pre-fill용)
+  const recent=confirmed.slice(-3);
+  let sumAdSpend=0,sumOrgPct=0,sumRoas=0,cnt=0;
+  let salesArr=[];
+  recent.forEach(k=>{const t=agg(byMonth[k].rows);if(t.adSpend>0){sumAdSpend+=t.adSpend;sumOrgPct+=t.sales>0?t.organic/t.sales*100:35;sumRoas+=t.adSpend>0?t.sales/t.adSpend*100:130;cnt++;salesArr.push(t.sales);}});
+  const avgAdSpend=cnt>0?sumAdSpend/cnt:300;
+  const avgOrgPct=cnt>0?sumOrgPct/cnt:35;
+  const avgRoas=cnt>0?sumRoas/cnt:130;
+
+  // MoM 성장률 (최근 데이터 기준)
+  let growthRates=[];
+  for(let i=1;i<salesArr.length;i++) if(salesArr[i-1]>0) growthRates.push((salesArr[i]-salesArr[i-1])/salesArr[i-1]*100);
+  const avgGrowth=growthRates.length?Math.max(-10,Math.min(20,growthRates.reduce((a,b)=>a+b,0)/growthRates.length)):5;
+
+  const lastConfMo=confirmed.length>0?byMonth[confirmed[confirmed.length-1]].mo:3;
+
+  // 1~12월 전체 (단, 데이터 없는 1월은 건너뜀)
+  const startMo=ymKeys.length>0?byMonth[ymKeys[0]].mo:2;
+  for(let mo=startMo;mo<=12;mo++){
+    const key=`sim_${yr}_${mo}`;
+    const bmKey=`${yr}.${mo}`;
+    const conf=isConfirmed(yr,mo);
+    if(conf&&byMonth[bmKey]){
+      const t=agg(byMonth[bmKey].rows);
+      simData[key]={mo,yr,locked:true,adSpend:parseFloat(t.adSpend.toFixed(0)),orgPct:t.sales>0?parseFloat((t.organic/t.sales*100).toFixed(1)):parseFloat(avgOrgPct.toFixed(1)),roas:t.adSpend>0?parseFloat((t.sales/t.adSpend*100).toFixed(0)):parseFloat(avgRoas.toFixed(0)),actual:{totalSales:t.sales,adSales:t.adSales,organic:t.organic,adSpend:t.adSpend,orders:t.orders}};
+    } else {
+      const ahead=Math.max(0,mo-lastConfMo);
+      const projAdSpend=avgAdSpend*Math.pow(1+avgGrowth/200,ahead);
+      simData[key]={mo,yr,locked:false,adSpend:Math.round(projAdSpend),orgPct:parseFloat(avgOrgPct.toFixed(1)),roas:parseFloat(avgRoas.toFixed(0))};
+    }
+  }
+}
+
+function calcSim(key){
+  const d=simData[key]; if(!d) return null;
+  if(d.locked) return {...d.actual};
+  const totalSales=d.adSpend*(d.roas/100);
+  const organic=totalSales*(d.orgPct/100);
+  return {totalSales,adSales:totalSales-organic,organic,adSpend:d.adSpend,orders:0};
+}
+
+function updateSim(key,field,val){
+  if(!simData[key]||simData[key].locked) return;
+  simData[key][field]=parseFloat(val)||0;
+  renderSimulation();
+}
+
+function renderSimulation(){
+  const yr=activeYear;
+  document.getElementById('topbar-badge').textContent=yr+' 시뮬레이션';
+  _hideWeekNav();
+  document.getElementById('review-section').innerHTML='';
+
+  // 전체 합산
+  let totSales=0,totAd=0,totOrg=0,totSpend=0,totOrders=0;
+  const rows=[];
+  Object.keys(simData).sort((a,b)=>simData[a].mo-simData[b].mo).forEach(key=>{
+    const c=calcSim(key); if(!c) return;
+    totSales+=c.totalSales; totAd+=c.adSales; totOrg+=c.organic; totSpend+=c.adSpend; totOrders+=(c.orders||0);
+    rows.push({key,d:simData[key],c});
+  });
+  const totRoas=totSpend>0?totSales/totSpend:0;
+  const totAcos=totSales>0?totSpend/totSales*100:0;
+  const orgPctTotal=totSales>0?totOrg/totSales*100:0;
+  const r=avgRate(agg(allData.filter(d=>d.yr===yr)));
+
+  // 배너
+  document.getElementById('top-banner').innerHTML=`<div class="banner-projected"><div>
+    <div class="banner-label">🎯 ${yr}년 연간 시뮬레이션 · 예상 총 매출</div>
+    <div class="banner-value">${fmtAgg(totSales,r.krw,r.sgd)}</div>
+    <div class="banner-meta">광고비 ${fmtAgg(totSpend,r.krw,r.sgd)} · Total ROAS ${(totRoas*100).toFixed(0)}% · ACoS ${Math.round(totAcos)} · 오가닉 ${orgPctTotal.toFixed(1)}%</div>
+  </div><div class="banner-right">
+    <div class="banner-month">${yr}(E)</div>
+    <div class="banner-days">광고매출 ${totSales>0?(totAd/totSales*100).toFixed(1):'0'}% · 오가닉 ${orgPctTotal.toFixed(1)}%</div>
+  </div></div>`;
+
+  // KPI
+  document.getElementById('kpi-row1').innerHTML=`
+    <div class="kpi-card"><div class="kpi-lbl">연간 총 매출</div><div class="kpi-val" style="color:#1d4ed8;font-weight:800">${fmtAgg(totSales,r.krw,r.sgd)}</div></div>
+    <div class="kpi-card"><div class="kpi-lbl">광고 매출</div><div class="kpi-val">${fmtAgg(totAd,r.krw,r.sgd)} <span style="font-size:11px;color:var(--muted)">(${totSales>0?(totAd/totSales*100).toFixed(1):'0'}%)</span></div></div>
+    <div class="kpi-card"><div class="kpi-lbl">오가닉</div><div class="kpi-val">${fmtAgg(totOrg,r.krw,r.sgd)} <span style="font-size:11px;color:var(--muted)">(${orgPctTotal.toFixed(1)}%)</span></div></div>
+    <div class="kpi-card"><div class="kpi-lbl">연간 광고비</div><div class="kpi-val">${fmtAgg(totSpend,r.krw,r.sgd)}</div></div>
+    <div class="kpi-card"><div class="kpi-lbl">Total ROAS</div><div class="kpi-val">${(totRoas*100).toFixed(0)}%</div></div>`;
+  document.getElementById('ratio-grid').innerHTML='';
+
+  // 차트: 확정(파랑) + 시뮬레이션(노랑) 누적 바
+  const moNames=['','Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const labels=rows.map(({d})=>moNames[d.mo]);
+  const actD=rows.map(({d,c})=>d.locked?Math.round(c.totalSales):0);
+  const simD=rows.map(({d,c})=>d.locked?0:Math.round(c.totalSales));
+  document.getElementById('chart-main-title').textContent='월별 매출 — 확정 vs 시뮬레이션';
+  if(mainCI)mainCI.destroy();
+  mainCI=new Chart(document.getElementById('mainChart').getContext('2d'),{
+    type:'bar',
+    data:{labels,datasets:[
+      {label:'확정 매출',data:actD,backgroundColor:'rgba(59,130,246,.75)',borderRadius:4,stack:'s'},
+      {label:'시뮬레이션',data:simD,backgroundColor:'rgba(251,191,36,.65)',borderRadius:4,stack:'s'},
+    ]},
+    options:{responsive:true,maintainAspectRatio:false,animation:false,
+      plugins:{legend:{labels:{color:'#475569',boxWidth:10,font:{size:11}}}},
+      scales:{x:{ticks:{color:'#64748b'}},y:{ticks:{color:'#64748b',callback:v=>'$'+Math.round(v/1000)+'k'}}}}
+  });
+  // 도넛: 광고 vs 오가닉
+  if(donutCI)donutCI.destroy();
+  donutCI=new Chart(document.getElementById('donutChart').getContext('2d'),{type:'doughnut',
+    data:{labels:['Ad Sales','Organic'],datasets:[{data:[Math.round(totAd),Math.round(totOrg)],backgroundColor:['#22c55e','#fbbf24'],borderWidth:0,hoverOffset:5}]},
+    options:{responsive:true,maintainAspectRatio:false,animation:false,cutout:'65%',plugins:{legend:{position:'bottom',labels:{color:'#475569',boxWidth:10,font:{size:11}}}}}});
+
+  // 시뮬레이션 테이블
+  const inp=(key,field,val,unit)=>`<input type="number" value="${val}" min="0" step="${field==='roas'||field==='orgPct'?1:10}"
+    style="width:65px;padding:2px 5px;border:1px solid var(--border);border-radius:5px;font-size:12px;text-align:right"
+    oninput="updateSim('${key}','${field}',this.value)">${unit?`<span style="font-size:10px;color:var(--muted)">${unit}</span>`:''}`;
+  document.getElementById('summary-section').innerHTML=`
+  <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+    <div class="section-title" style="margin:0">📊 ${yr}년 월별 시뮬레이션</div>
+    <button onclick="resetSimData()" style="font-size:11px;padding:3px 10px;border:1px solid var(--border);border-radius:6px;cursor:pointer;background:var(--card2);color:var(--muted)">↺ 트렌드 초기화</button>
+  </div>
+  <div class="table-wrap scrollx"><table><thead><tr>
+    <th style="text-align:left">월</th><th>상태</th>
+    <th>광고비($)</th><th>Total ROAS(%)</th><th>오가닉(%)</th>
+    <th>총 매출</th><th>광고 매출</th><th>오가닉</th>
+  </tr></thead><tbody>
+  ${rows.map(({key,d,c})=>{
+    const locked=d.locked;
+    const moName=moNames[d.mo];
+    const status=locked?`<span class="badge badge-up" style="font-size:10px">✅ 확정</span>`:`<span class="badge badge-neu" style="font-size:10px">📝 입력</span>`;
+    const rowStyle=locked?'':'background:rgba(251,191,36,.05)';
+    const adSpendCell=locked?fmtAgg(c.adSpend,r.krw,r.sgd):inp(key,'adSpend',d.adSpend,'');
+    const roasCell=locked?`${Math.round(d.roas)}%`:inp(key,'roas',d.roas,'%');
+    const orgCell=locked?`${d.orgPct.toFixed(1)}%`:inp(key,'orgPct',d.orgPct,'%');
+    return `<tr style="${rowStyle}">
+      <td style="font-weight:600;white-space:nowrap">${moName}</td><td>${status}</td>
+      <td>${adSpendCell}</td><td>${roasCell}</td><td>${orgCell}</td>
+      <td><strong style="color:#1d4ed8">${fmtAgg(c.totalSales,r.krw,r.sgd)}</strong></td>
+      <td>${fmtAgg(c.adSales,r.krw,r.sgd)}</td>
+      <td>${fmtAgg(c.organic,r.krw,r.sgd)}</td>
+    </tr>`;}).join('')}
+  <tr style="font-weight:700;background:var(--card2);border-top:2px solid var(--border)">
+    <td colspan="2">연간 합계</td>
+    <td>${fmtAgg(totSpend,r.krw,r.sgd)}</td><td>—</td><td>${orgPctTotal.toFixed(1)}%</td>
+    <td><strong style="color:#1d4ed8">${fmtAgg(totSales,r.krw,r.sgd)}</strong></td>
+    <td>${fmtAgg(totAd,r.krw,r.sgd)}</td><td>${fmtAgg(totOrg,r.krw,r.sgd)}</td>
+  </tr></tbody></table></div>`;
+}
+
 // ──── MAIN RENDER ──────────────────────────────────────────────────
 function render(){
   const nav=document.querySelector('.navbar');
@@ -902,6 +1061,8 @@ function render(){
   const _mw=document.getElementById('mainChart-wrap'); if(_mw)_mw.style.height='360px';
   if(activeTab!=='weekly' && !byMonth[activeMonth]) activeMonth=monthKeys[monthKeys.length-1];
   buildNavbar();
+  document.getElementById('daily-section').style.display='none';
+  if(simMode){ renderSimulation(); return; }
   document.getElementById('daily-section').style.display = activeTab==='daily'?'block':'none';
   if(activeTab==='annual') renderAnnual();
   else if(activeTab==='quarter') renderQuarter();
