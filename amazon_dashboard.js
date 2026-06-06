@@ -23,6 +23,7 @@ let activeTab='weekly', activeCurrency='USD', vineMode='exclude', chartType='bar
 let activeMonth=null, activeYear=null, activeQuarter=null;
 let activeWeekIdx=null; // null=전체, number=특정주 인덱스
 let kwSortCol='sales', kwSortDir=-1;
+let trendCI=null;
 let _gwCache=null; // global week list cache
 let rangeFrom='', rangeTo='';
 let mainCI=null, donutCI=null;
@@ -2367,11 +2368,80 @@ function _renderStatChart(labels, items, titleStr, maxRot){
       scales:{
         x:{ticks:{color:'#64748b',maxRotation:maxRot||30,font:{size:9}},grid:{color:'#f1f5f9'}},
         y:{position:'left',ticks:{color:'#64748b',callback:v=>sym+Math.round(v)},grid:{color:'#e2e8f0'},title:{display:true,text:isKo()?'금액':'Amount',color:'#94a3b8',font:{size:10}}},
-        y2:{position:'right',display:hasY2,ticks:{color:'#64748b',callback:v=>Math.round(v)+(adsStatMetrics.some(k=>STAT_METRICS[k]?.f==='pct')?'%':'')},grid:{drawOnChartArea:false},title:{display:hasY2,text:isKo()?'비율/수량':'Ratio/Count',color:'#94a3b8',font:{size:10}}}
+        ...(hasY2?{y2:{position:'right',ticks:{color:'#64748b',callback:v=>Math.round(v)+(adsStatMetrics.some(k=>STAT_METRICS[k]?.f==='pct')?'%':'')},grid:{drawOnChartArea:false},title:{display:true,text:isKo()?'비율/수량':'Ratio/Count',color:'#94a3b8',font:{size:10}}}}:{})
       }
     }
   });
 }
+
+// ──── TREND PANEL (campaign / keyword 클릭 시 일자별 추정 트렌드) ────
+function _showTrendPanel(panelId, titleStr, item, totSpend, totSales){
+  if(trendCI){trendCI.destroy();trendCI=null;}
+  const panel=document.getElementById(panelId);
+  if(!panel)return;
+  const cr=getRate(2026,5);
+  const sym=activeCurrency==='KRW'?'₩':activeCurrency==='SGD'?'S$':'$';
+  const spendR=totSpend>0?item.spend/totSpend:0;
+  const salesR=totSales>0?item.sales/totSales:0;
+  const daily=allData.filter(d=>d.yr===2026&&d.mo===5).sort((a,b)=>a.day-b.day);
+  if(!daily.length){panel.innerHTML='<div style="padding:12px;color:var(--muted);font-size:12px">'+(isKo()?'일별 데이터 없음':'No daily data available')+'</div>';return;}
+  const labels=daily.map(d=>d.day+'일');
+  const spendData=daily.map(d=>Math.round((d.adSpend||0)*spendR*cr));
+  const salesData=daily.map(d=>Math.round((d.adSales||0)*salesR*cr));
+  panel.innerHTML='<div style="background:var(--card);border:1px solid var(--accent);border-radius:10px;padding:14px 16px;margin-bottom:12px">'+
+    '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">'+
+    '<span style="font-size:12px;font-weight:700;color:var(--fg)">📈 '+titleStr+'</span>'+
+    '<span style="font-size:10px;color:var(--muted)">'+( isKo()?'May 2026 일별 추정 (전체 대비 비례)':'May 2026 est. daily trend (proportional)')+'</span></div>'+
+    '<div style="position:relative;height:180px"><canvas id="trend-canvas"></canvas></div></div>';
+  trendCI=new Chart(document.getElementById('trend-canvas').getContext('2d'),{type:'bar',
+    data:{labels,datasets:[
+      {label:isKo()?'광고비(추정)':'Spend(est.)',data:spendData,backgroundColor:'rgba(239,68,68,.5)',borderRadius:3,yAxisID:'y',order:2},
+      {label:isKo()?'매출(추정)':'Sales(est.)',data:salesData,backgroundColor:'rgba(34,197,94,.5)',borderRadius:3,yAxisID:'y',order:2}
+    ]},
+    options:{responsive:true,maintainAspectRatio:false,animation:false,
+      interaction:{mode:'index',intersect:false},
+      plugins:{legend:{labels:{color:'#475569',boxWidth:10,font:{size:11}}},
+        tooltip:{backgroundColor:'#fff',borderColor:'#e2e8f0',borderWidth:1,titleColor:'#0f172a',bodyColor:'#334155',padding:8,
+          callbacks:{label:c=>' '+c.dataset.label+': '+sym+c.raw.toLocaleString()}}},
+      scales:{
+        x:{ticks:{color:'#64748b',font:{size:9}},grid:{color:'#f1f5f9'}},
+        y:{position:'left',ticks:{color:'#64748b',callback:v=>sym+Math.round(v)},grid:{color:'#e2e8f0'}}
+      }
+    }
+  });
+}
+
+let _activeTrendName=null;
+window.showCampTrend=function(name){
+  const K=KEYWORD_DATA;
+  const camp=K.campaigns.find(c=>c.name===name);
+  if(!camp)return;
+  const panel=document.getElementById('ads-trend-panel');
+  if(!panel)return;
+  if(_activeTrendName===name){_activeTrendName=null;panel.innerHTML='';if(trendCI){trendCI.destroy();trendCI=null;}return;}
+  _activeTrendName=name;
+  document.querySelectorAll('.camp-row').forEach(r=>r.classList.remove('row-active'));
+  const el=document.querySelector('.camp-row[data-name="'+CSS.escape(name)+'"]');
+  if(el)el.classList.add('row-active');
+  const totSpend=K.campaigns.reduce((s,c)=>s+c.spend,0);
+  const totSales=K.campaigns.reduce((s,c)=>s+c.sales,0);
+  _showTrendPanel('ads-trend-panel',camp.name,camp,totSpend,totSales);
+};
+window.showKwTrend=function(kw){
+  const K=KEYWORD_DATA;
+  const item=K.keywords.find(k=>k.kw===kw);
+  if(!item)return;
+  const panel=document.getElementById('ads-trend-panel');
+  if(!panel)return;
+  if(_activeTrendName===kw){_activeTrendName=null;panel.innerHTML='';if(trendCI){trendCI.destroy();trendCI=null;}return;}
+  _activeTrendName=kw;
+  document.querySelectorAll('.kw-row').forEach(r=>r.classList.remove('row-active'));
+  const el=document.querySelector('.kw-row[data-kw="'+CSS.escape(kw)+'"]');
+  if(el)el.classList.add('row-active');
+  const totSpend=K.keywords.reduce((s,k)=>s+k.spend,0);
+  const totSales=K.keywords.reduce((s,k)=>s+k.sales,0);
+  _showTrendPanel('ads-trend-panel',kw,item,totSpend,totSales);
+};
 
 // ──── CAMPAIGN TAB ───────────────────────────────────────────────
 function renderCampaigns(){
@@ -2395,15 +2465,17 @@ function renderCampaigns(){
   _renderStatKPI([
     [{lb:isKo()?'총 광고비':'Total Spend',v:money(totSpend),c:'#ef4444'},{lb:isKo()?'총 광고매출':'Ad Sales',v:money(totSales),c:'#22c55e'},{lb:'ROAS',v:Math.round(totSpend>0?totSales/totSpend*100:0)+'%',c:'#3b82f6'},{lb:'ACoS',v:Math.round(totSales>0?totSpend/totSales*100:0),c:'#f97316'}],
     [{lb:isKo()?'총 클릭':'Clicks',v:totClicks.toLocaleString(),c:'#0ea5e9'},{lb:isKo()?'총 주문':'Orders',v:totOrders,c:'#a855f7'},{lb:'CPC',v:money(totClicks>0?totSpend/totClicks:0),c:'#f59e0b'},{lb:'CTR',v:(totImpr>0?totClicks/totImpr*100:0).toFixed(2)+'%',c:'#14b8a6'}],
-    [{lb:isKo()?'캠페인 수':'Campaigns',v:K.campaigns.length,c:'#8b5cf6'},{lb:isKo()?'전환 캠페인':'Converting',v:convC,c:'#22c55e'},{lb:isKo()?'총 노출':'Impressions',v:totImpr.toLocaleString(),c:'#64748b'},{lb:'CVR',v:(totClicks>0?totOrders/totClicks*100:0).toFixed(1)+'%',c:'#10b981'}],
+    [{lb:isKo()?'캠페인 수':'Campaigns',v:K.campaigns.length,c:'#8b5cf6'},{lb:isKo()?'전환 캠페인':'Converting',v:convC,c:'#22c55e'},{lb:isKo()?'총 노출':'Impressions',v:totImpr.toLocaleString(),c:'#64748b'},{lb:'CVR',v:(totClicks>0?totOrders/totClicks*100:0).toFixed(2)+'%',c:'#10b981'}],
   ]);
+  _activeTrendName=null;
   _renderStatChips();
   const sorted=[...K.campaigns].sort((a,b)=>b.spend-a.spend).slice(0,12);
   _renderStatChart(sorted.map(c=>c.name.length>18?c.name.slice(0,18)+'…':c.name),sorted,isKo()?'📊 캠페인별 성과':'📊 Campaign Performance',35);
   const campHead='<thead><tr><th style="text-align:left">'+(isKo()?'캠페인명':'Campaign')+'</th><th>'+(isKo()?'광고비':'Spend')+'</th><th>'+(isKo()?'매출':'Sales')+'</th><th>ROAS</th><th>ACoS</th><th>CPC</th><th>CTR</th><th>'+(isKo()?'클릭':'Clk')+'</th><th>'+(isKo()?'노출':'Impr')+'</th><th>'+(isKo()?'주문':'Ord')+'</th></tr></thead>';
-  const campRow=c=>'<tr><td style="text-align:left;font-size:11px">'+c.name+'</td><td>'+money(c.spend)+'</td><td>'+money(c.sales)+'</td><td class="'+(roasOf(c)>=100?'pos':'neg')+'">'+Math.round(roasOf(c))+'%</td><td>'+(acosOf(c)>0?Math.round(acosOf(c)):'-')+'</td><td>'+money(cpcOf(c))+'</td><td>'+ctrOf(c).toFixed(2)+'%</td><td>'+c.clicks+'</td><td>'+(c.impr||0).toLocaleString()+'</td><td>'+c.orders+'</td></tr>';
+  const campRow=c=>'<tr class="camp-row" data-name="'+c.name+'" onclick="showCampTrend(\''+c.name.replace(/'/g,"\\'")+'\')" style="cursor:pointer"><td style="text-align:left;font-size:11px">'+c.name+'</td><td>'+money(c.spend)+'</td><td>'+money(c.sales)+'</td><td class="'+(roasOf(c)>=100?'pos':'neg')+'">'+Math.round(roasOf(c))+'%</td><td>'+(acosOf(c)>0?Math.round(acosOf(c)):'-')+'</td><td>'+money(cpcOf(c))+'</td><td>'+ctrOf(c).toFixed(2)+'%</td><td>'+c.clicks+'</td><td>'+(c.impr||0).toLocaleString()+'</td><td>'+c.orders+'</td></tr>';
   document.getElementById('summary-section').innerHTML=
-    '<div class="section-title">📋 '+(isKo()?'전체 캠페인 (광고비 순)':'All Campaigns (by spend)')+'</div>'+
+    '<div id="ads-trend-panel"></div>'+
+    '<div class="section-title">📋 '+(isKo()?'전체 캠페인 (광고비 순, 클릭하면 트렌드 보기)':'All Campaigns (by spend · click row for trend)')+'</div>'+
     '<div class="table-wrap scrollx"><table>'+campHead+'<tbody>'+[...K.campaigns].sort((a,b)=>b.spend-a.spend).map(campRow).join('')+'</tbody></table></div>';
 }
 
@@ -2429,7 +2501,7 @@ function renderAdGroups(){
   _renderStatKPI([
     [{lb:isKo()?'총 광고비':'Total Spend',v:money(totSpend),c:'#ef4444'},{lb:isKo()?'총 광고매출':'Ad Sales',v:money(totSales),c:'#22c55e'},{lb:'ROAS',v:Math.round(totSpend>0?totSales/totSpend*100:0)+'%',c:'#3b82f6'},{lb:'ACoS',v:Math.round(totSales>0?totSpend/totSales*100:0),c:'#f97316'}],
     [{lb:isKo()?'총 클릭':'Clicks',v:totClicks.toLocaleString(),c:'#0ea5e9'},{lb:isKo()?'총 주문':'Orders',v:totOrders,c:'#a855f7'},{lb:'CPC',v:money(totClicks>0?totSpend/totClicks:0),c:'#f59e0b'},{lb:'CTR',v:(totImpr>0?totClicks/totImpr*100:0).toFixed(2)+'%',c:'#14b8a6'}],
-    [{lb:isKo()?'광고그룹 수':'Ad Groups',v:groups.length,c:'#06b6d4'},{lb:isKo()?'전환 그룹':'Converting',v:groups.filter(g=>g.orders>0).length,c:'#22c55e'},{lb:isKo()?'총 노출':'Impressions',v:totImpr.toLocaleString(),c:'#64748b'},{lb:'CVR',v:(totClicks>0?totOrders/totClicks*100:0).toFixed(1)+'%',c:'#10b981'}],
+    [{lb:isKo()?'광고그룹 수':'Ad Groups',v:groups.length,c:'#06b6d4'},{lb:isKo()?'전환 그룹':'Converting',v:groups.filter(g=>g.orders>0).length,c:'#22c55e'},{lb:isKo()?'총 노출':'Impressions',v:totImpr.toLocaleString(),c:'#64748b'},{lb:'CVR',v:(totClicks>0?totOrders/totClicks*100:0).toFixed(2)+'%',c:'#10b981'}],
   ]);
   _renderStatChips();
   _renderStatChart(groups.map(g=>g.name.length>16?g.name.slice(0,16)+'…':g.name),groups,isKo()?'📊 광고그룹별 성과':'📊 Ad Group Performance',20);
@@ -2483,8 +2555,13 @@ function renderKeywords(){
   _renderStatChips();
 
   // 공통 테이블 헤더/행
+  _activeTrendName=null;
   const kwHead='<thead><tr><th style="text-align:left">'+(isKo()?'키워드':'Keyword')+'</th><th>'+(isKo()?'매출':'Sales')+'</th><th>'+(isKo()?'광고비':'Spend')+'</th><th>ROAS</th><th>ACoS</th><th>CPC</th><th>'+(isKo()?'클릭':'Clk')+'</th><th>'+(isKo()?'주문':'Ord')+'</th></tr></thead>';
-  const kwRow=k=>'<tr><td style="text-align:left;font-size:11px">'+kwDisplay(k.kw)+'</td><td>'+money(k.sales)+'</td><td>'+money(k.spend)+'</td><td class="'+(roasOf(k)>=100?'pos':'neg')+'">'+Math.round(roasOf(k))+'%</td><td>'+Math.round(acosOf(k))+'</td><td>'+money(cpcOf(k))+'</td><td>'+k.clicks+'</td><td>'+k.orders+'</td></tr>';
+  const kwRow=k=>{const asinM=k.kw.match(asinRe);const isAsin=!!asinM;const isGroup=k.kw.startsWith('keyword-group=');
+    const clickable=!isAsin&&!isGroup;
+    return '<tr'+(clickable?' class="kw-row" data-kw="'+k.kw.replace(/"/g,'&quot;')+'" onclick="showKwTrend(\''+k.kw.replace(/\\/g,'\\\\').replace(/'/g,'\\\'')+'\')" style="cursor:pointer"':'')+'>'+
+    '<td style="text-align:left;font-size:11px">'+kwDisplay(k.kw)+'</td><td>'+money(k.sales)+'</td><td>'+money(k.spend)+'</td><td class="'+(roasOf(k)>=100?'pos':'neg')+'">'+Math.round(roasOf(k))+'%</td><td>'+Math.round(acosOf(k))+'</td><td>'+money(cpcOf(k))+'</td><td>'+k.clicks+'</td><td>'+k.orders+'</td></tr>';
+  };
 
   // 탑 키워드: 세일즈 높은 순 (비브랜드, 전환 있는 것)
   const topBySales=[...regularKws].filter(k=>k.orders>0).sort((a,b)=>b.sales-a.sales).slice(0,10);
@@ -2504,6 +2581,7 @@ function renderKeywords(){
   const allHead='<thead><tr><th style="text-align:left">'+(isKo()?'키워드':'Keyword')+'</th>'+th('sales',isKo()?'매출':'Sales')+th('spend',isKo()?'광고비':'Spend')+'<th>ROAS</th><th>ACoS</th>'+th('cpc','CPC')+th('clicks',isKo()?'클릭':'Clk')+th('orders',isKo()?'주문':'Ord')+'</tr></thead>';
 
   document.getElementById('summary-section').innerHTML=
+    '<div id="ads-trend-panel"></div>'+
     // 브랜드 키워드
     (brandKws.length?'<div class="section-title">🏷️ '+(isKo()?'브랜드 키워드':'Brand Keywords')+'</div>'+
     '<div class="table-wrap scrollx"><table>'+kwHead+'<tbody>'+brandKws.sort((a,b)=>b.sales-a.sales).map(kwRow).join('')+'</tbody></table></div>':'')+
@@ -2522,10 +2600,13 @@ window.kwSort=function(col){if(kwSortCol===col)kwSortDir*=-1;else{kwSortCol=col;
 // ──── NEW KEYWORDS TAB ────────────────────────────────────────────
 function renderNewKeywords(){
   _adsStatLayout();
+  // 차트 및 오버레이 칩 완전 숨김
+  const mw=document.getElementById('mainChart-wrap'); if(mw)mw.style.display='none';
+  const rg=document.getElementById('ratio-grid'); if(rg)rg.style.display='none';
+  if(mainCI){mainCI.destroy();mainCI=null;}
+  document.getElementById('chart-main-title').textContent='';
   document.getElementById('topbar-badge').textContent=isKo()?'신규 키워드 후보':'New Keyword Candidates';
   const K=KEYWORD_DATA, rate=avgRate(agg(allData));
-  const cr=getRate(2026,5);
-  const sym=activeCurrency==='KRW'?'₩':activeCurrency==='SGD'?'S$':'$';
   const money=v=>fmtAgg(v,rate.krw,rate.sgd);
   const totSpend=K.newKeywords.reduce((s,k)=>s+k.spend,0);
   const totSales=K.newKeywords.reduce((s,k)=>s+k.sales,0);
@@ -2536,12 +2617,9 @@ function renderNewKeywords(){
   document.getElementById('top-banner').innerHTML='<div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:12px 16px;margin-bottom:4px;font-size:12px;color:var(--muted)">'+(isKo()?'🔍 전환이 발생한 고객 검색어 — 정식 키워드 등록 후보':'🔍 Search terms that converted — candidates for explicit keyword targeting')+'</div>';
   _renderStatKPI([
     [{lb:isKo()?'총 광고비':'Total Spend',v:money(totSpend),c:'#ef4444'},{lb:isKo()?'총 매출':'Sales',v:money(totSales),c:'#22c55e'},{lb:'ROAS',v:Math.round(totSpend>0?totSales/totSpend*100:0)+'%',c:'#3b82f6'},{lb:'ACoS',v:Math.round(totSales>0?totSpend/totSales*100:0),c:'#f97316'}],
-    [{lb:isKo()?'총 클릭':'Clicks',v:totClicks.toLocaleString(),c:'#0ea5e9'},{lb:isKo()?'총 주문':'Orders',v:totOrders,c:'#a855f7'},{lb:'CPC',v:money(totClicks>0?totSpend/totClicks:0),c:'#f59e0b'},{lb:'CVR',v:(totClicks>0?totOrders/totClicks*100:0).toFixed(1)+'%',c:'#10b981'}],
+    [{lb:isKo()?'총 클릭':'Clicks',v:totClicks.toLocaleString(),c:'#0ea5e9'},{lb:isKo()?'총 주문':'Orders',v:totOrders,c:'#a855f7'},{lb:'CPC',v:money(totClicks>0?totSpend/totClicks:0),c:'#f59e0b'},{lb:'CVR',v:(totClicks>0?totOrders/totClicks*100:0).toFixed(2)+'%',c:'#10b981'}],
     [{lb:isKo()?'검색어 수':'Search Terms',v:K.newKeywords.length,c:'#3b82f6'},{lb:isKo()?'전환 검색어':'Converting',v:convTerms,c:'#22c55e'},{lb:'✅ '+(isKo()?'등록 추천':'Add KW'),v:addKwCount,c:'#22c55e'},{lb:'🔍 '+(isKo()?'모니터링':'Monitor'),v:convTerms-addKwCount,c:'#f59e0b'}],
   ]);
-  _renderStatChips();
-  const top10=[...K.newKeywords].sort((a,b)=>b.sales-a.sales).slice(0,10);
-  _renderStatChart(top10.map(k=>k.term.length>20?k.term.slice(0,20)+'…':k.term),top10,isKo()?'🔍 신규 검색어 Top10':'🔍 New Search Terms Top10',35);
   const nkHead='<thead><tr><th style="text-align:left">'+(isKo()?'고객 검색어':'Search Term')+'</th><th>'+(isKo()?'매출':'Sales')+'</th><th>'+(isKo()?'주문':'Ord')+'</th><th>'+(isKo()?'클릭':'Clk')+'</th><th>'+(isKo()?'광고비':'Spend')+'</th><th>ROAS</th><th>'+(isKo()?'추천':'Action')+'</th></tr></thead>';
   const nkRow=k=>{const roas=k.spend>0?k.sales/k.spend*100:0;
     const action=k.orders>=2&&roas>=100?'✅ '+(isKo()?'키워드 등록':'Add KW'):k.orders>=1&&roas>=50?'🔍 '+(isKo()?'모니터링':'Monitor'):'⏸ '+(isKo()?'대기':'Hold');
