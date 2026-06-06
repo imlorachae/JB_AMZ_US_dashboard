@@ -716,6 +716,7 @@ function buildNavbar(){
   ut._tabs=tabs;
 }
 function selectYear(y){
+  simMode=false;
   activeYear=y;
   const ym=monthKeys.filter(k=>byMonth[k].yr===y);
   if(ym.length){
@@ -903,10 +904,47 @@ function enterSimMode(){
     if(saved){try{simData=JSON.parse(saved);}catch(e){initSimData();}}
     else initSimData();
   }
+  _refreshSimData();
   render();
 }
 function exitSimMode(){ simMode=false; render(); }
-function resetSimData(){ initSimData(); renderSimulation(); }
+function resetSimData(){ initSimData(); _refreshSimData(); renderSimulation(); }
+
+// localStorage 로드 후 당월 partial data 반영 + trendPredicted 재계산
+function _refreshSimData(){
+  const yr=activeYear;
+  // 1) 당월 진행중 월: calcProjSales 로 입력값 보정 (사용자 편집 미보존 — 최신 데이터 우선)
+  Object.keys(simData).forEach(key=>{
+    const d=simData[key];
+    if(d.locked||d.yr!==yr) return;
+    const bmKey=`${d.yr}.${d.mo}`;
+    if(!byMonth[bmKey]||!byMonth[bmKey].rows.length) return;
+    const pt=agg(byMonth[bmKey].rows);
+    const prows=byMonth[bmKey].rows.slice().sort((a,b)=>a.day-b.day);
+    const dim=new Date(d.yr,d.mo,0).getDate();
+    const projSales=calcProjSales(pt.sales,prows,d.yr,d.mo,dim);
+    const projAdSpend=pt.adSpend>0?pt.adSpend/prows.length*dim:d.adSpend;
+    simData[key].adSpend=Math.round(projAdSpend);
+    simData[key].roas=parseFloat((projAdSpend>0?projSales/projAdSpend*100:d.roas).toFixed(0));
+    simData[key].orgPct=parseFloat((pt.sales>0?pt.organic/pt.sales*100:d.orgPct).toFixed(1));
+  });
+  // 2) trendPredicted 재계산 (localStorage에 없을 수 있음)
+  const ymKeys=monthKeys.filter(k=>byMonth[k].yr===yr);
+  const confirmed=ymKeys.filter(k=>isConfirmed(byMonth[k].yr,byMonth[k].mo));
+  const lastConfMo=confirmed.length>0?byMonth[confirmed[confirmed.length-1]].mo:3;
+  const recent=confirmed.slice(-3);
+  let sumA=0,sumR=0,cnt=0,salesArr=[];
+  recent.forEach(k=>{const t=agg(byMonth[k].rows);if(t.adSpend>0){sumA+=t.adSpend;sumR+=t.adSpend>0?t.sales/t.adSpend*100:130;cnt++;salesArr.push(t.sales);}});
+  const avgA=cnt>0?sumA/cnt:300, avgR=cnt>0?sumR/cnt:130;
+  let gr=[];
+  for(let i=1;i<salesArr.length;i++) if(salesArr[i-1]>0) gr.push((salesArr[i]-salesArr[i-1])/salesArr[i-1]*100);
+  const avgG=gr.length?Math.max(-10,Math.min(20,gr.reduce((a,b)=>a+b,0)/gr.length)):5;
+  Object.keys(simData).forEach(k=>{
+    const d=simData[k];
+    if(d.yr!==yr) return;
+    simData[k].trendPredicted=Math.round(avgA*Math.pow(1+avgG/200,d.mo-lastConfMo)*avgR/100);
+  });
+}
 
 function initSimData(){
   simData={};
@@ -941,8 +979,19 @@ function initSimData(){
       simData[key]={mo,yr,locked:true,adSpend:parseFloat(t.adSpend.toFixed(0)),orgPct:t.sales>0?parseFloat((t.organic/t.sales*100).toFixed(1)):parseFloat(avgOrgPct.toFixed(1)),roas:t.adSpend>0?parseFloat((t.sales/t.adSpend*100).toFixed(0)):parseFloat(avgRoas.toFixed(0)),actual:{totalSales:t.sales,adSales:t.adSales,organic:t.organic,adSpend:t.adSpend,orders:t.orders}};
     } else {
       const ahead=Math.max(0,mo-lastConfMo);
-      const projAdSpend=avgAdSpend*Math.pow(1+avgGrowth/200,ahead);
-      simData[key]={mo,yr,locked:false,adSpend:Math.round(projAdSpend),orgPct:parseFloat(avgOrgPct.toFixed(1)),roas:parseFloat(avgRoas.toFixed(0))};
+      let projAdSpend=avgAdSpend*Math.pow(1+avgGrowth/200,ahead);
+      let projRoas=avgRoas, projOrgPct=avgOrgPct;
+      // 당월(진행 중): calcProjSales 기반으로 입력값 보정
+      if(byMonth[bmKey]&&byMonth[bmKey].rows.length>0){
+        const pt=agg(byMonth[bmKey].rows);
+        const prows=byMonth[bmKey].rows.slice().sort((a,b)=>a.day-b.day);
+        const dim=new Date(yr,mo,0).getDate();
+        const projSales=calcProjSales(pt.sales,prows,yr,mo,dim);
+        if(pt.adSpend>0) projAdSpend=pt.adSpend/prows.length*dim;
+        if(projAdSpend>0) projRoas=projSales/projAdSpend*100;
+        if(pt.sales>0) projOrgPct=pt.organic/pt.sales*100;
+      }
+      simData[key]={mo,yr,locked:false,adSpend:Math.round(projAdSpend),orgPct:parseFloat(projOrgPct.toFixed(1)),roas:parseFloat(projRoas.toFixed(0))};
     }
   }
   // 트렌드 예측값 (전체 월 공통 — 확정 월의 실제 대비 비교용)
