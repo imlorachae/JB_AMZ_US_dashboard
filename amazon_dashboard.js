@@ -301,7 +301,7 @@ function buildByMonth(){
 }
 function showDash(){
   document.getElementById('upload-screen').style.display='none';
-  document.getElementById('dashboard').style.display='block';
+  document.getElementById('dashboard').style.display='flex';
   applyI18nStatic(); render();
 }
 
@@ -309,8 +309,7 @@ function showDash(){
 function applyI18nStatic(){
   document.documentElement.lang=isKo()?'ko':'en';
   // tab group
-  document.getElementById('mode-toggle').innerHTML=[['sales',T('salesMode')],['ads',T('adsMode')]].map(([m,lb])=>
-    `<button class="mode-btn ${m===appMode?'active':''}" onclick="setMode('${m}')">${lb}</button>`).join('');
+  renderSidebar();
   const _tabs = appMode==='sales' ? ['annual','quarter','monthly','weekly','daily'] : ADS_TABS;
   document.getElementById('tab-group').innerHTML=_tabs.map(t=>
     `<button class="tab-btn ${t===activeTab?'active':''}" onclick="setTab('${t}')">${T(t)}</button>`).join('');
@@ -406,7 +405,45 @@ function resetRange(){
 }
 
 // ──── CONTROLS ─────────────────────────────────────────────────────
-function setMode(m){ appMode=m; activeTab=m==='sales'?'weekly':'overview'; if(m==='sales') _syncRangeToYear(activeYear); applyI18nStatic(); render(); }
+function setMode(m){
+  appMode=m;
+  if(m==='sales') activeTab='weekly';
+  else if(m==='ads') activeTab='overview';
+  if(m==='sales') _syncRangeToYear(activeYear);
+  applyI18nStatic(); render();
+}
+// ──── SIDEBAR (좌측 세로 메뉴) ──────────────────────────────────────
+const SIDEBAR_ITEMS=[
+  ['sales','💰',()=>isKo()?'매출 분석':'Sales'],
+  ['ads','📢',()=>isKo()?'광고 분석':'Ads'],
+  ['consolidated','📊',()=>isKo()?'종합 대시보드':'Overview'],
+  ['settings','⚙️',()=>isKo()?'설정':'Settings'],
+];
+function renderSidebar(){
+  const sb=document.getElementById('sidebar');
+  if(!sb) return;
+  sb.innerHTML='<div class="sidebar-logo">📊 JungBeauty</div>'+
+    SIDEBAR_ITEMS.map(([m,ic,lb])=>
+      `<button class="sidebar-btn ${m===appMode?'active':''}" onclick="setMode('${m}')"><span class="ic">${ic}</span><span>${lb()}</span></button>`).join('')+
+    '<div class="sidebar-spacer"></div>'+
+    `<div class="sidebar-foot">${isKo()?'US · Amazon':'US · Amazon'}</div>`;
+}
+function renderConsolidatedPlaceholder(){
+  const el=document.getElementById('overview-section');
+  if(!el) return;
+  el.innerHTML=`<div class="section-title">📊 ${isKo()?'종합 대시보드':'Consolidated Overview'}</div>
+  <div style="background:var(--card);border:1px solid var(--border);border-radius:12px;padding:40px 24px;text-align:center;color:var(--muted);font-size:13px">
+    ${isKo()?'국가·판매채널 확장에 맞춰 통합 뷰가 이곳에 추가될 예정입니다.<br>(US/UAE, 다른 채널 데이터 연동 후 구성)':'A consolidated cross-country / cross-channel view will be added here as the dashboard expands to US/UAE and other sales channels.'}
+  </div>`;
+}
+function renderSettingsPlaceholder(){
+  const el=document.getElementById('settings-section');
+  if(!el) return;
+  el.innerHTML=`<div class="section-title">⚙️ ${isKo()?'설정':'Settings'}</div>
+  <div style="background:var(--card);border:1px solid var(--border);border-radius:12px;padding:40px 24px;text-align:center;color:var(--muted);font-size:13px">
+    ${isKo()?'환경설정 / 데이터 동기화 옵션 등이 이곳에 추가될 예정입니다.':'Preferences and data-sync options will be added here.'}
+  </div>`;
+}
 function setTab(t){
   simMode=false;
   activeTab=t;
@@ -820,8 +857,25 @@ function renderSimulation(){
 }
 
 // ──── MAIN RENDER ──────────────────────────────────────────────────
+function _hideAllSections(except){
+  ['week-nav-bar','review-section','top-banner','kpi-row1','ratio-grid','charts-grid','summary-section','daily-section','overview-section','settings-section'].forEach(id=>{
+    const el=document.getElementById(id);
+    if(el) el.style.display=(id===except)?'':'none';
+  });
+}
 function render(){
   const nav=document.querySelector('.navbar');
+  if(appMode==='consolidated'||appMode==='settings'){
+    if(nav) nav.style.display='none';
+    const tg=document.getElementById('tab-group'); if(tg) tg.innerHTML='';
+    const tb=document.getElementById('topbar-badge'); if(tb) tb.textContent=appMode==='consolidated'?(isKo()?'종합 대시보드':'Overview'):(isKo()?'설정':'Settings');
+    if(appMode==='consolidated'){ _hideAllSections('overview-section'); renderConsolidatedPlaceholder(); }
+    else { _hideAllSections('settings-section'); renderSettingsPlaceholder(); }
+    return;
+  }
+  // 매출/광고 모드 진입 시 placeholder 섹션 숨김 + 정상 섹션 복원
+  ['overview-section','settings-section'].forEach(id=>{const el=document.getElementById(id); if(el) el.style.display='none';});
+  ['review-section','top-banner','kpi-row1','ratio-grid','charts-grid','summary-section'].forEach(id=>{const el=document.getElementById(id); if(el) el.style.display='';});
   if(appMode==='ads'){
     if(nav) nav.style.display='none';            // 광고 모드: 매출용 네비 숨김
     document.getElementById('daily-section').style.display='none';
