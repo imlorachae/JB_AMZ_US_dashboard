@@ -2466,14 +2466,42 @@ function renderCampaigns(){
   const cpcOf=c=>c.clicks>0?c.spend/c.clicks:0;
   const ctrOf=c=>(c.impr&&c.impr>0)?c.clicks/c.impr*100:0;
   const cpcFmt=v=>{if(activeCurrency==='KRW')return '₩'+Math.round(v*rate.krw).toLocaleString();if(activeCurrency==='SGD')return 'S$'+(v*(rate.sgd||1.34)).toFixed(2);return '$'+v.toFixed(2);};
-  const totSpend=K.campaigns.reduce((s,c)=>s+c.spend,0);
-  const totSales=K.campaigns.reduce((s,c)=>s+c.sales,0);
-  const totOrders=K.campaigns.reduce((s,c)=>s+c.orders,0);
-  const totClicks=K.campaigns.reduce((s,c)=>s+c.clicks,0);
-  const totImpr=K.campaigns.reduce((s,c)=>s+(c.impr||0),0);
-  const convC=K.campaigns.filter(c=>c.orders>0).length;
   // 캠페인 탭도 Overview와 동일한 기간 선택 UI 제공
-  const {from:campFrom,to:campTo}=buildAdsBuckets();
+  const {from:campFrom,to:campTo,rows:campRangeRows}=buildAdsBuckets();
+  // KEYWORD_DATA.campaigns는 누적(전체기간) 데이터라 날짜별 분해가 불가능 →
+  // 선택한 기간의 allData 합계를 전체기간 합계로 나눈 비율로 캠페인 지표를 비례 추정한다.
+  const allAdRows=allData.filter(d=>d.adSpend>0||d.impr>0||d.clicks>0);
+  const fullSpend=allAdRows.reduce((s,d)=>s+(d.adSpend||0),0);
+  const fullSales=allAdRows.reduce((s,d)=>s+(d.adSales||0),0);
+  const fullClicks=allAdRows.reduce((s,d)=>s+(d.clicks||0),0);
+  const fullImpr=allAdRows.reduce((s,d)=>s+(d.impr||0),0);
+  const fullAdOrders=allAdRows.reduce((s,d)=>s+(d.adOrders||0),0);
+  const rngSpend=(campRangeRows||[]).reduce((s,d)=>s+(d.adSpend||0),0);
+  const rngSales=(campRangeRows||[]).reduce((s,d)=>s+(d.adSales||0),0);
+  const rngClicks=(campRangeRows||[]).reduce((s,d)=>s+(d.clicks||0),0);
+  const rngImpr=(campRangeRows||[]).reduce((s,d)=>s+(d.impr||0),0);
+  const rngAdOrders=(campRangeRows||[]).reduce((s,d)=>s+(d.adOrders||0),0);
+  const isFullRange=!adsFrom&&!adsTo&&adsQuick>=30; // 기본(전체 누적) 상태인지
+  const rSpend=fullSpend>0?rngSpend/fullSpend:0;
+  const rSales=fullSales>0?rngSales/fullSales:0;
+  const rClicks=fullClicks>0?rngClicks/fullClicks:0;
+  const rImpr=fullImpr>0?rngImpr/fullImpr:0;
+  const rOrders=fullAdOrders>0?rngAdOrders/fullAdOrders:0;
+  // 캠페인별로 비례 추정 적용 (선택 기간이 전체와 동일하면 원본 그대로)
+  const estCampaigns=isFullRange?K.campaigns:K.campaigns.map(c=>({
+    ...c,
+    spend:c.spend*rSpend,
+    sales:c.sales*rSales,
+    clicks:Math.round(c.clicks*rClicks),
+    impr:Math.round((c.impr||0)*rImpr),
+    orders:Math.round(c.orders*rOrders)
+  }));
+  const totSpend=estCampaigns.reduce((s,c)=>s+c.spend,0);
+  const totSales=estCampaigns.reduce((s,c)=>s+c.sales,0);
+  const totOrders=estCampaigns.reduce((s,c)=>s+c.orders,0);
+  const totClicks=estCampaigns.reduce((s,c)=>s+c.clicks,0);
+  const totImpr=estCampaigns.reduce((s,c)=>s+(c.impr||0),0);
+  const convC=estCampaigns.filter(c=>c.orders>0).length;
   const fmtDC=d=>d?(d.getMonth()+1)+'/'+d.getDate():'-';
   const isoD2=d=>d?d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'):'';
   const granBtnC=(g,lb)=>'<button onclick="setAdsGran(\''+g+'\')" style="padding:6px 14px;border:1px solid var(--border);border-radius:7px;cursor:pointer;font-size:12px;font-weight:600;background:'+(adsGran===g?'var(--accent)':'var(--card)')+';color:'+(adsGran===g?'#fff':'var(--muted)')+'">'+lb+'</button>';
@@ -2493,7 +2521,7 @@ function renderCampaigns(){
         '<button class="mini-btn" onclick="setAdsRange()">'+(isKo()?'적용':'Apply')+'</button>'+
         (adsFrom?'<button class="mini-btn ghost" onclick="clearAdsRange()">'+(isKo()?'해제':'Clear')+'</button>':'')+
       '</div>'+
-      '<div style="margin-left:auto;font-size:12px;color:var(--muted)">'+(isKo()?'기간':'Period')+': <strong style="color:var(--text)">'+fmtDC(campFrom)+' ~ '+fmtDC(campTo)+'</strong> · '+(isKo()?'🎯 캠페인 누적 기준':'🎯 Cumulative totals')+'</div>'+
+      '<div style="margin-left:auto;font-size:12px;color:var(--muted)">'+(isKo()?'기간':'Period')+': <strong style="color:var(--text)">'+fmtDC(campFrom)+' ~ '+fmtDC(campTo)+'</strong> · '+(isFullRange?(isKo()?'🎯 캠페인 누적 기준':'🎯 Cumulative totals'):(isKo()?'📐 선택 기간 비례 추정치 (캠페인별 일별 데이터가 없어 일별 광고 실적 비율로 추정)':'📐 Estimated for selected period (proportional, daily campaign breakdown unavailable)'))+'</div>'+
     '</div>';
   setTimeout(()=>{
     const fm=document.getElementById('ads-from-mount');const tm=document.getElementById('ads-to-mount');
@@ -2503,17 +2531,17 @@ function renderCampaigns(){
   _renderStatKPI([
     [{lb:isKo()?'총 광고비':'Total Spend',v:money(totSpend),c:'#ef4444'},{lb:isKo()?'총 광고매출':'Ad Sales',v:money(totSales),c:'#22c55e'},{lb:'ROAS',v:Math.round(totSpend>0?totSales/totSpend*100:0)+'%',c:'#3b82f6'},{lb:'ACoS',v:Math.round(totSales>0?totSpend/totSales*100:0),c:'#f97316'}],
     [{lb:isKo()?'총 클릭':'Clicks',v:totClicks.toLocaleString(),c:'#0ea5e9'},{lb:isKo()?'총 주문':'Orders',v:totOrders,c:'#a855f7'},{lb:'CPC',v:cpcFmt(totClicks>0?totSpend/totClicks:0),c:'#f59e0b'},{lb:'CTR',v:(totImpr>0?totClicks/totImpr*100:0).toFixed(2)+'%',c:'#14b8a6'}],
-    [{lb:isKo()?'캠페인 수':'Campaigns',v:K.campaigns.length,c:'#8b5cf6'},{lb:isKo()?'전환 캠페인':'Converting',v:convC,c:'#22c55e'},{lb:isKo()?'총 노출':'Impressions',v:totImpr.toLocaleString(),c:'#64748b'},{lb:'CVR',v:(totClicks>0?totOrders/totClicks*100:0).toFixed(2)+'%',c:'#10b981'}],
+    [{lb:isKo()?'캠페인 수':'Campaigns',v:estCampaigns.length,c:'#8b5cf6'},{lb:isKo()?'전환 캠페인':'Converting',v:convC,c:'#22c55e'},{lb:isKo()?'총 노출':'Impressions',v:totImpr.toLocaleString(),c:'#64748b'},{lb:'CVR',v:(totClicks>0?totOrders/totClicks*100:0).toFixed(2)+'%',c:'#10b981'}],
   ]);
   _activeTrendName=null;
   _renderStatChips();
-  const sorted=[...K.campaigns].sort((a,b)=>b.spend-a.spend).slice(0,12);
-  _renderStatChart(sorted.map(c=>c.name.length>18?c.name.slice(0,18)+'…':c.name),sorted,isKo()?'📊 캠페인별 성과':'📊 Campaign Performance',35);
+  const sorted=[...estCampaigns].sort((a,b)=>b.spend-a.spend).slice(0,12);
+  _renderStatChart(sorted.map(c=>c.name.length>18?c.name.slice(0,18)+'…':c.name),sorted,(isFullRange?(isKo()?'📊 캠페인별 성과':'📊 Campaign Performance'):(isKo()?'📊 캠페인별 성과 (선택 기간 추정)':'📊 Campaign Performance (estimated for period)')),35);
   const campHead='<thead><tr><th style="text-align:left">'+(isKo()?'캠페인명':'Campaign')+'</th><th>'+(isKo()?'광고비':'Spend')+'</th><th>'+(isKo()?'매출':'Sales')+'</th><th>ROAS</th><th>ACoS</th><th>CPC</th><th>CTR</th><th>'+(isKo()?'클릭':'Clk')+'</th><th>'+(isKo()?'노출':'Impr')+'</th><th>'+(isKo()?'주문':'Ord')+'</th></tr></thead>';
   const campRow=c=>'<tr class="camp-row" data-name="'+c.name+'" onclick="showCampTrend(\''+c.name.replace(/'/g,"\\'")+'\')" style="cursor:pointer"><td style="text-align:left;font-size:11px">'+c.name+'</td><td>'+money(c.spend)+'</td><td>'+money(c.sales)+'</td><td class="'+(roasOf(c)>=100?'pos':'neg')+'">'+Math.round(roasOf(c))+'%</td><td>'+(acosOf(c)>0?Math.round(acosOf(c)):'-')+'</td><td>'+cpcFmt(cpcOf(c))+'</td><td>'+ctrOf(c).toFixed(2)+'%</td><td>'+c.clicks+'</td><td>'+(c.impr||0).toLocaleString()+'</td><td>'+c.orders+'</td></tr>';
   document.getElementById('summary-section').innerHTML=
-    '<div class="section-title">📋 '+(isKo()?'전체 캠페인 (광고비 순 · 행 클릭 → 트렌드)':'All Campaigns (by spend · click row for trend)')+'</div>'+
-    '<div class="table-wrap scrollx"><table>'+campHead+'<tbody>'+[...K.campaigns].sort((a,b)=>b.spend-a.spend).map(campRow).join('')+'</tbody></table></div>';
+    '<div class="section-title">📋 '+(isKo()?'전체 캠페인 (광고비 순 · 행 클릭 → 트렌드)':'All Campaigns (by spend · click row for trend)')+(isFullRange?'':' <span style="font-weight:400;font-size:11px;color:var(--muted)">'+(isKo()?'— 선택 기간 비례 추정':'— estimated for selected period')+'</span>')+'</div>'+
+    '<div class="table-wrap scrollx"><table>'+campHead+'<tbody>'+[...estCampaigns].sort((a,b)=>b.spend-a.spend).map(campRow).join('')+'</tbody></table></div>';
 }
 
 // ──── AD GROUP TAB ────────────────────────────────────────────────
