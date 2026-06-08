@@ -2848,6 +2848,9 @@ function renderNewKeywords(){
 window.addEventListener('DOMContentLoaded', () => {
   const stored = loadFromStorage();
   allData = stored.length ? mergeData(PRELOADED, stored) : PRELOADED;
+  // Re-apply VINE_ITEMS so vine_adj always reflects current VINE_ITEMS (not stale localStorage values)
+  const _initVm={}; VINE_ITEMS.forEach(v=>{const k=v.yr+'_'+v.mo+'_'+v.day;_initVm[k]=(_initVm[k]||0)+(v.adj||0);});
+  allData.forEach(r=>{const k=r.yr+'_'+r.mo+'_'+r.day;r.vine_adj=_initVm[k]||0;});
   buildByMonth(); showDash();
   // Background sync (silent, skip if same CA day)
   autoSyncOnLoad();
