@@ -2837,7 +2837,9 @@ function renderNewKeywords(){
   const nkHead='<thead><tr><th style="text-align:left">'+(isKo()?'고객 검색어':'Search Term')+'</th><th>'+(isKo()?'매출':'Sales')+'</th><th>'+(isKo()?'주문':'Ord')+'</th><th>'+(isKo()?'클릭':'Clk')+'</th><th>'+(isKo()?'광고비':'Spend')+'</th><th>ROAS</th><th>'+(isKo()?'추천':'Action')+'</th></tr></thead>';
   const nkRow=k=>{const roas=k.spend>0?k.sales/k.spend*100:0;
     const action=k.orders>=2&&roas>=100?'✅ '+(isKo()?'키워드 등록':'Add KW'):k.orders>=1&&roas>=50?'🔍 '+(isKo()?'모니터링':'Monitor'):'⏸ '+(isKo()?'대기':'Hold');
-    return '<tr><td style="text-align:left;font-size:11px">'+k.term+'</td><td>'+money(k.sales)+'</td><td>'+k.orders+'</td><td>'+k.clicks+'</td><td>'+money(k.spend)+'</td><td class="'+(roas>=100?'pos':'neg')+'">'+Math.round(roas)+'%</td><td style="font-size:11px">'+action+'</td></tr>';
+    const isAsin=/^[a-zA-Z0-9]{10}$/.test(k.term);
+    const termHtml=isAsin?'<a href="https://www.amazon.com/dp/'+k.term.toUpperCase()+'" target="_blank" style="color:#3b82f6;text-decoration:none">🔗 '+k.term.toUpperCase()+'</a>':k.term;
+    return '<tr><td style="text-align:left;font-size:11px">'+termHtml+'</td><td>'+money(k.sales)+'</td><td>'+k.orders+'</td><td>'+k.clicks+'</td><td>'+money(k.spend)+'</td><td class="'+(roas>=100?'pos':'neg')+'">'+Math.round(roas)+'%</td><td style="font-size:11px">'+action+'</td></tr>';
   };
   document.getElementById('summary-section').innerHTML=
     '<div class="section-title">🔍 '+(isKo()?'전체 신규 검색어 (매출 순)':'All New Search Terms (by sales)')+'</div>'+
