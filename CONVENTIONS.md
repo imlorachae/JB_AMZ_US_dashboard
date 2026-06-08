@@ -1,7 +1,7 @@
 # JungBeauty Amazon 대시보드 — 약속된 규칙 (Conventions)
 
 > 코드(`amazon_dashboard.js`)에서 직접 확인된 사실만 기록합니다. 확인되지 않은 부분은 "확인 필요"로 명시.
-> 최종 갱신: 2026-06-07
+> 최종 갱신: 2026-06-08
 
 ---
 
@@ -108,6 +108,30 @@ Google Drive (JB_global_google)
 
 업로드 시 mergeData()가 병합 (8일 컷오프로 확정 데이터 보호)
 ```
+
+---
+
+## 7. UI 레이아웃 규칙 (2026-06-08 추가)
+
+### 7-1. Ads 지표 순서 — 고객 여정 기준
+- **ADS_ORDER** (Trend Metrics 칩 순서):
+  `adSpend → adSales → organic → roas → acos → troas → tacos → impr → ctr → clicks → cvr → adOrders → cpc → cpa → cpm`
+- **Ads Overview 3번째 KPI 행** (8칸):
+  `impr → ctr → clicks → adOrders → cvr → cpm → cpc → cpa`
+  - 고객 여정 순서: 노출 → 클릭률 → 클릭 → 주문 → 전환율 → (비용 지표) CPM → CPC → CPA
+  - CPC(클릭당 비용), CPA(전환당 비용), CPM(노출당 비용)은 비용 지표로 묶어 맨 뒤 배치
+
+### 7-2. 비용 지표 색상
+- CPM, CPC, CPA 3개 카드는 동일한 연한 회색 `#94a3b8`으로 통일
+  → 비용 지표임을 시각적으로 구분 (나머지 여정 지표들은 각자 고유 색)
+
+### 7-3. 전체 너비 일관성
+- **문제**: `.content` 가 flex 컬럼 안에서 `margin: 0 auto`를 사용해 내부 콘텐츠 크기에 맞게 수축 → 탭마다 너비 달라짐
+- **수정**: `amazon_dashboard.css` `.content` 에 `width: 100%; box-sizing: border-box` 추가
+  ```css
+  .content{padding:14px 20px;max-width:1440px;margin:0 auto;width:100%;box-sizing:border-box}
+  ```
+- 결과: Sales/Ads Overview/Campaign/Ad Group/KW 등 모든 탭이 동일 너비로 렌더링
 
 ---
 
