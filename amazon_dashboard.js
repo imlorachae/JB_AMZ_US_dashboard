@@ -1773,7 +1773,26 @@ function drawChart(labels,salesD,adD,orgD,adSpD,sortedRows,highlightIdx){
   }
   const opts=chartOpts();
   if(isMix&&adSpD){opts.scales=opts.scales||{};opts.scales.y2={position:'right',title:{display:true,text:isKo()?'광고비':'Ad Spend',color:'#94a3b8',font:{size:10}},ticks:{color:'#ef4444'},grid:{drawOnChartArea:false}};}
-  mainCI=new Chart(document.getElementById('mainChart').getContext('2d'),{type:(isBar||isMix)?'bar':'line',data:{labels,datasets:ds},options:opts});
+  // Vine shade: red region from first vine date to end of chart
+  const vineStartIdx=sortedRows?sortedRows.findIndex(r=>(r.vine_adj||0)<0):-1;
+  const vineShadePlugin=vineStartIdx>=0?[{
+    id:'vineShade',
+    beforeDraw(chart){
+      const {ctx,chartArea,scales:{x}}=chart;
+      if(!chartArea||!x)return;
+      const startX=x.getPixelForValue(vineStartIdx-0.5);
+      ctx.save();
+      ctx.fillStyle='rgba(239,68,68,0.07)';
+      ctx.fillRect(startX,chartArea.top,chartArea.right-startX,chartArea.bottom-chartArea.top);
+      // thin red left border line
+      ctx.strokeStyle='rgba(239,68,68,0.4)';
+      ctx.lineWidth=1.5;
+      ctx.setLineDash([4,3]);
+      ctx.beginPath();ctx.moveTo(startX,chartArea.top);ctx.lineTo(startX,chartArea.bottom);ctx.stroke();
+      ctx.restore();
+    }
+  }]:[];
+  mainCI=new Chart(document.getElementById('mainChart').getContext('2d'),{type:(isBar||isMix)?'bar':'line',data:{labels,datasets:ds},options:opts,plugins:vineShadePlugin});
 }
 function renderDonut(cT,rate){
   if(donutCI)donutCI.destroy();
