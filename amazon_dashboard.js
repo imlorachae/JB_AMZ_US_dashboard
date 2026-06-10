@@ -221,8 +221,9 @@ function mergeData(existing, incoming) {
     const ex      = map.get(k);
 
     if(ex) {
-      // 8일보다 오래된 기존 데이터는 변경하지 않음 (confirmed)
-      if(rowDate < cutoff) return;
+      // 8일보다 오래된 확정 데이터는 변경하지 않음
+      // 단, _adOnly이고 기존에 광고 데이터가 없으면(adSpend===0) 최초 입력 허용
+      if(rowDate < cutoff && !(d._adOnly && !(ex.adSpend > 0))) return;
 
       if(d._adOnly) {
         // Sponsored Products 광고 데이터 → 광고 지표만 업데이트, 매출 보존
@@ -248,8 +249,20 @@ function mergeData(existing, incoming) {
       }
       map.set(k, merged);
     } else {
-      // 신규 날짜 - ad-only면 adSpend/adSales만 있는 빈 행 추가 (나중에 Business Report로 채워짐)
-      if(!d._adOnly) map.set(k, d);
+      // 신규 날짜
+      if(d._adOnly) {
+        // _adOnly 신규 날짜: 광고 데이터로 빈 레코드 생성 (sales는 Business Report로 나중에 채워짐)
+        map.set(k, {
+          yr:d.yr, mo:d.mo, day:d.day, dow:d.dow||'',
+          sales:0, salesKRW:0, orders:0, items:0, sessions:0, organic:0, vine_adj:0,
+          adSpend:Math.round((d.adSpend||0)*100)/100,
+          adSales:Math.round((d.adSales||0)*100)/100,
+          impr:d.impr||0, clicks:d.clicks||0, adOrders:d.adOrders||0,
+          _adOnly:true
+        });
+      } else {
+        map.set(k, d);
+      }
     }
   });
 
@@ -2051,7 +2064,7 @@ async function saveBackupToFolder() {
 }
 
 // ──── GOOGLE DRIVE SYNC ──────────────────────────────────────────────
-const DRIVE_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbz_NAcN5bkdWFdzaOQlXS5JQKLuHmxKVXWzhJunJqw41mfPSOb1JcVQ8JZ0vh5T2v-HWg/exec';
+const DRIVE_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbyzxyBAmqqPNIX7IM_MN6Jj1CjRccv3N3SbbatUEYCDidz2_t4B2fhlsj-eDq3qFes7iQ/exec';
 const DRIVE_SYNC_KEY      = 'jb_drive_last_sync';
 const DRIVE_FILE_MOD_KEY  = 'jb_drive_last_file_mod';
 
@@ -2310,7 +2323,7 @@ function renderAds(){
   // ── KPI 3행 (항목5) ──
   const kpiColor={adSpend:'#ef4444',adSales:'#22c55e',organic:'#06b6d4',totalSales:'#3b82f6',roas:'#3b82f6',acos:'#f97316',troas:'#8b5cf6',tacos:'#ec4899',impr:'#64748b',cpm:'#94a3b8',clicks:'#0ea5e9',ctr:'#14b8a6',cpc:'#94a3b8',adOrders:'#a855f7',cvr:'#10b981',cpa:'#94a3b8'};
   const ADS_ROWS=[
-    ['adSpend','adSales','organic','totalSales'],
+    ['totalSales','adSpend','adSales','organic'],
     ['roas','acos','troas','tacos'],
     ['impr','ctr','clicks','adOrders','cvr','cpm','cpc','cpa'],
   ];
@@ -2356,7 +2369,7 @@ function renderAds(){
 
   // ── 기간별 테이블 (데이터 없는 일별 행 제외) ──
   const showDow=adsGran==='daily';
-  const cols=['adSpend','adSales','organic','impr','clicks','ctr','cpc','cpm','adOrders','cvr','cpa','roas','acos','troas','tacos'];
+  const cols=['totalSales','adSpend','adSales','organic','roas','acos','troas','tacos','impr','clicks','ctr','cpc','cpm','adOrders','cvr','cpa'];
   const hasAdData=b=>b.t&&(b.t.adSpend>0||b.t.impr>0||b.t.clicks>0||b.t.adSales>0);
   const visibleBuckets=showDow?buckets.filter(hasAdData):buckets;
   const granLabel=isKo()?(adsGran==='yearly'?'📅 연간 광고 요약':adsGran==='monthly'?'📅 월간 광고 요약':adsGran==='daily'?'📅 일별 광고 상세':'📅 주별 광고 상세'):(adsGran==='yearly'?'📅 Yearly Ad Summary':adsGran==='monthly'?'📅 Monthly Ad Summary':adsGran==='daily'?'📅 Daily Ad Detail':'📅 Weekly Ad Detail');
