@@ -2225,7 +2225,7 @@ function fmtMetric(k,v,rate){const m=ADS_METRICS[k];
 function setAdsGran(g){adsGran=g;render();}
 function setAdsQuick(d){adsQuick=d;render();}
 function toggleAdsMetric(k){const i=adsMetrics.indexOf(k);if(i>=0){if(adsMetrics.length>1)adsMetrics.splice(i,1);}else{if(adsMetrics.length<ADS_MAX_METRICS)adsMetrics.push(k);else{alert(isKo()?('최대 '+ADS_MAX_METRICS+'개까지 선택 가능합니다'):('Max '+ADS_MAX_METRICS+' metrics'));return;}}render();}
-function setAdsRange(){const f=document.getElementById('ads-from').value,t=document.getElementById('ads-to').value;if(f&&t){adsFrom=f;adsTo=t;}render();}
+function setAdsRange(){const fEl=document.getElementById('ads-from'),tEl=document.getElementById('ads-to');const f=fEl?fEl.value:'',t=tEl?tEl.value:'';if(f&&t){adsFrom=f;adsTo=t;}render();}
 function clearAdsRange(){adsFrom='';adsTo='';render();}
 
 // 광고 데이터 최신일 기준 최근 N일 버킷 생성
@@ -2486,7 +2486,9 @@ let _activeTrendName=null;
 function _buildDailyItems(item, totSpend, totSales){
   const spendR=totSpend>0?item.spend/totSpend:0;
   const salesR=totSales>0?item.sales/totSales:0;
-  const daily=allData.filter(d=>d.yr===2026&&d.mo===5).sort((a,b)=>a.day-b.day);
+  // 선택 기간(adsFrom/adsTo 또는 quick 버튼)을 그대로 따른다
+  let daily=buildAdsBuckets().rows||[];
+  if(!daily.length)daily=allData.filter(d=>d.yr===2026&&d.mo===5).sort((a,b)=>a.day-b.day);
   const labels=daily.map(d=>d.mo+'/'+d.day);
   const items=daily.map(d=>({
     spend:(d.adSpend||0)*spendR,
@@ -2499,27 +2501,38 @@ function _buildDailyItems(item, totSpend, totSales){
 
 window.showCampTrend=function(name){
   const K=KEYWORD_DATA;
-  const camp=K.campaigns.find(c=>c.name===name);
-  if(!camp)return;
-  const sorted=[...K.campaigns].sort((a,b)=>b.spend-a.spend).slice(0,12);
-  // 같은 캠페인 재클릭 → 전체 캠페인 차트로 복귀
+  const camp=K.campaigns.find(c=>c.name===name); // 누적 데이터에 없어도 실측(CAMPAIGN_DAILY)에 있으면 진행
+  // 같은 캠페인 재클릭 → 선택 기간 기준 캠페인 차트로 복귀
   if(_activeTrendName===name){
     _activeTrendName=null;
-    document.querySelectorAll('.camp-row').forEach(r=>r.classList.remove('row-active'));
-    _renderStatChart(sorted.map(c=>c.name.length>18?c.name.slice(0,18)+'…':c.name),sorted,
-      isKo()?'📊 캠페인별 성과 (클릭하면 트렌드)':'📊 Campaign Performance (click for trend)',35);
+    render();
     return;
   }
+  // 선택 기간(adsFrom/adsTo 또는 quick 버튼) 기준으로 트렌드 구성
+  const {from:trFrom,to:trTo}=buildAdsBuckets();
+  const isoT=d=>d?d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'):'';
+  const fS=isoT(trFrom), tS=isoT(trTo);
+  // 1) 해당 캠페인의 실측 일별 데이터(CAMPAIGN_DAILY)가 기간 내에 있으면 그걸 사용
+  const real=(typeof CAMPAIGN_DAILY!=='undefined'?CAMPAIGN_DAILY:[]).filter(r=>r.c===name&&r.d>=fS&&r.d<=tS).sort((a,b)=>a.d<b.d?-1:1);
+  let labels,items,title;
+  if(real.length){
+    labels=real.map(r=>{const p=r.d.split('-');return (+p[1])+'/'+(+p[2]);});
+    items=real.map(r=>({spend:r.s||0,sales:r.r||0,clicks:r.k||0,orders:r.o||0}));
+    title='📈 '+name+' — '+(isKo()?'일별 실측 트렌드':'Daily Actual Trend');
+  } else if(camp){
+    // 2) 실측이 없으면 선택 기간에 대한 비례 추정
+    const totSpend=K.campaigns.reduce((s,c)=>s+c.spend,0);
+    const totSales=K.campaigns.reduce((s,c)=>s+c.sales,0);
+    const est=_buildDailyItems(camp,totSpend,totSales);
+    if(!est.labels.length)return;
+    labels=est.labels; items=est.items;
+    title='📈 '+name+' — '+(isKo()?'일별 추정 트렌드 (선택 기간)':'Daily Est. Trend (selected period)');
+  } else return;
   _activeTrendName=name;
   document.querySelectorAll('.camp-row').forEach(r=>r.classList.remove('row-active'));
   const el=document.querySelector('.camp-row[data-name="'+CSS.escape(name)+'"]');
   if(el)el.classList.add('row-active');
-  const totSpend=K.campaigns.reduce((s,c)=>s+c.spend,0);
-  const totSales=K.campaigns.reduce((s,c)=>s+c.sales,0);
-  const daily=allData.filter(d=>d.yr===2026&&d.mo===5).sort((a,b)=>a.day-b.day);
-  if(!daily.length)return;
-  const {labels,items}=_buildDailyItems(camp,totSpend,totSales);
-  _renderStatChart(labels,items,'📈 '+camp.name+' — '+(isKo()?'5월 일별 추정 트렌드':'May Daily Est. Trend'),0);
+  _renderStatChart(labels,items,title,0);
 };
 
 window.showKwTrend=function(kw){
@@ -2539,13 +2552,12 @@ window.showKwTrend=function(kw){
   if(el)el.classList.add('row-active');
   const totSpend=K.keywords.reduce((s,k)=>s+k.spend,0);
   const totSales=K.keywords.reduce((s,k)=>s+k.sales,0);
-  const daily=allData.filter(d=>d.yr===2026&&d.mo===5).sort((a,b)=>a.day-b.day);
-  if(!daily.length)return;
   const {labels,items}=_buildDailyItems(item,totSpend,totSales);
+  if(!labels.length)return;
   // 키워드 탭은 차트 숨겨두었으므로 잠시 보여주기
   const mw=document.getElementById('mainChart-wrap');
   if(mw)mw.style.display='block';
-  _renderStatChart(labels,items,'📈 '+kw+' — '+(isKo()?'5월 일별 추정 트렌드':'May Daily Est. Trend'),0);
+  _renderStatChart(labels,items,'📈 '+kw+' — '+(isKo()?'일별 추정 트렌드 (선택 기간)':'Daily Est. Trend (selected period)'),0);
 };
 
 // ──── CAMPAIGN TAB ───────────────────────────────────────────────
@@ -2646,11 +2658,10 @@ function renderCampaigns(){
         :dataMode==='cumulative'?(isKo()?'🎯 캠페인 누적 기준':'🎯 Cumulative totals')
         :(isKo()?'📐 선택 기간 비례 추정치 (해당 기간의 캠페인별 일별 데이터가 없어 광고 실적 비율로 추정)':'📐 Estimated for selected period (proportional — no per-campaign daily report for this range)'))+'</div>'+
     '</div>';
-  setTimeout(()=>{
-    const fm=document.getElementById('ads-from-mount');const tm=document.getElementById('ads-to-mount');
-    if(fm){fm.innerHTML=dpHtml('ads-from',_af2);dpInit('ads-from',_af2);}
-    if(tm){tm.innerHTML=dpHtml('ads-to',_at2);dpInit('ads-to',_at2);}
-  },0);
+  const fm=document.getElementById('ads-from-mount');const tm=document.getElementById('ads-to-mount');
+  if(fm){fm.innerHTML=dpHtml('ads-from',_af2);dpInit('ads-from',_af2);}
+  if(tm){tm.innerHTML=dpHtml('ads-to',_at2);dpInit('ads-to',_at2);}
+
   _renderStatKPI([
     [{lb:isKo()?'총 광고비':'Total Spend',v:money(totSpend),c:'#ef4444'},{lb:isKo()?'총 광고매출':'Ad Sales',v:money(totSales),c:'#22c55e'},{lb:'ROAS',v:Math.round(totSpend>0?totSales/totSpend*100:0)+'%',c:'#3b82f6'},{lb:'ACoS',v:Math.round(totSales>0?totSpend/totSales*100:0),c:'#f97316'}],
     [{lb:isKo()?'총 클릭':'Clicks',v:totClicks.toLocaleString(),c:'#0ea5e9'},{lb:isKo()?'총 주문':'Orders',v:totOrders,c:'#a855f7'},{lb:'CPC',v:cpcFmt(totClicks>0?totSpend/totClicks:0),c:'#f59e0b'},{lb:'CTR',v:(totImpr>0?totClicks/totImpr*100:0).toFixed(2)+'%',c:'#14b8a6'}],
