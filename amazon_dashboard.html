@@ -49,12 +49,11 @@
     <div class="topbar-left">
       <span class="topbar-logo">📊 JungBeauty Amazon</span>
       <span class="topbar-badge" id="topbar-badge">-</span>
-      <span id="link-status" style="font-size:11px;color:var(--muted);margin-left:6px;white-space:nowrap"></span>
     </div>
     <div class="topbar-right">
       <div class="mode-toggle" id="mode-toggle"></div>
       <div class="tab-group" id="tab-group"></div>
-      <div class="currency-group">
+      <div class="currency-group" id="vine-group">
         <button class="ct-btn" id="vine-inc" onclick="setVineMode('include')">Vine 포함</button>
         <button class="ct-btn active" id="vine-exc" onclick="setVineMode('exclude')">Vine 제외</button>
       </div>
@@ -67,6 +66,7 @@
       <button class="icon-btn" id="reset-btn" onclick="resetDashboard()"></button>
     </div>
   </div>
+  <div id="status-bar"><span id="link-status"></span></div>
 
   <div class="content">
     <!-- NAVBAR (item 1 + 6) -->

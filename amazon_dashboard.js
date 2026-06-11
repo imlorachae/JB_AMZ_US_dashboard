@@ -331,6 +331,7 @@ function applyI18nStatic(){
   document.getElementById('vine-exc').textContent=T('vineExc');
   document.getElementById('vine-inc').classList.toggle('active',vineMode==='include');
   document.getElementById('vine-exc').classList.toggle('active',vineMode==='exclude');
+  const _vg=document.getElementById('vine-group'); if(_vg) _vg.style.display=appMode==='sales'?'':'none';
   document.getElementById('reset-btn').textContent=T('newFile');
   const dsb=document.getElementById('drive-sync-btn');
   if(dsb) dsb.textContent=isKo()?'동기화':'Sync';
