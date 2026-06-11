@@ -45,14 +45,14 @@
 - **`PRELOADED` 배열** (js 3번 줄): 대시보드 정적 폴백 데이터.
   필드: `{yr, mo, day, dow, sales, salesKRW, orders, items, sessions, adSpend, adSales, organic, vine_adj, vine_desc, impr, clicks, adOrders}`
 - **출처**: Google Drive `JB_global_google/01_Claude_Data/JB_Master_Data` 시트(`master_data_upload` 탭)
-  - 광고 세부 지표(impr/clicks/adOrders)는 `02_ads/Sponsored_Products_검색어_보고서_xxxx.xlsx`에서 일자별 합산해 채움
+  - 광고 세부 지표(impr/clicks/adOrders)는 `01_US/01_AMZ/02_ads/Sponsored_Products_검색어_보고서_xxxx.xlsx`에서 일자별 합산해 채움
 - **organic 계산**: `organic = Math.max(0, sales - adSales)` (js 227, 241, 661번 줄 동일 패턴)
 - **vine_adj**: 자동 계산 로직 없음. Vine 프로모션으로 발생한 매출(원가 이하 리뷰 물량)을 사람이 직접 식별해서 `vine_adj`(보통 해당일 sales와 같은 크기의 음수)와 `vine_desc`에 수동 입력하는 **데이터 입력 컨벤션**.
   - `agg()`에서 `vineMode==='exclude'`(`v` 플래그)일 때 sales/organic에 `vine_adj`를 더해 Vine 매출 제외 집계 생성
 
 ## 2. 광고 데이터 정리 방법
 
-- **출처**: `02_ads/Sponsored_Products_검색어_보고서_xxxx.xlsx` (Sponsored Products 키워드 보고서, raw)
+- **출처**: `01_US/01_AMZ/02_ads/Sponsored_Products_검색어_보고서_xxxx.xlsx` (Sponsored Products 키워드 보고서, raw)
 - **`CAMPAIGN_DAILY` 상수** (js 4번 줄): raw 보고서를 (날짜, 캠페인명) 기준으로 직접 피벗·집계한 **실측 데이터** (추정치 아님)
   - 필드: `{d:날짜, c:캠페인명, i:노출, k:클릭, s:지출, r:광고매출, o:주문}`
   - 2026-06-11 확장: `AD_data_deep/Sponsored_Products_캠페인_보고서_04.csv`(4월, 일별) + `_05_1.csv`(5/1~14, 시간별→일별 합산) + 기존 검색어 보고서 피벗(5/29~6/4)
@@ -106,8 +106,8 @@
 ```
 [입력] 아마존 보고서 메일 (no-reply@ads.amazon.com, 첨부 없음·링크만)
    └─ 사람이 "보고서 다운로드" 클릭 → xlsx를 Drive에 업로드 (자동화 불가: 링크가 로그인 필요)
-        ├─ 01_Claude_Data/01_Sales/  (매출·비즈니스 보고서)
-        └─ 01_Claude_Data/02_ads/   (광고 보고서)
+        ├─ 01_Claude_Data/01_US/01_AMZ/01_Sales/  (매출·비즈니스 보고서)
+        └─ 01_Claude_Data/01_US/01_AMZ/02_ads/   (광고 보고서, ID: 1VO9j_TnG60XJEfGxS0kIvfO7ShMdIn5z)
 
 [스크립트 1] JB Dashboard Server (원조, 6/1) — "백업 + 가공"
    매일 밤 10~11시 KST 트리거(manualUpdateMasterSheet) + URL 호출 시:
