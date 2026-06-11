@@ -23,8 +23,24 @@ const GMAIL_QUERIES = [
 // ================================================================
 // 1. doGet — 대시보드 엔드포인트 (캐시 포함)
 // ================================================================
+// ================================================================
+// v7: 다국가 지원 폴더 ID 맵 (MY / SG)
+// ================================================================
+const FOLDER_MAP = {
+  MY_Shopify:   '15HeWVH6SXK2TnkjrlQcvUe9IEtKd2skc',
+  MY_Shopee:    '1t2-mB1n4FtfLL0Q4cJLIJtlf635q2D0U',
+  MY_TikTok:    '1Sq4rqzeSA95ocmNpUVez0hUq8Lg03TG_',
+  MY_TikTokAds: '1N9t680BVR8cgoaTVCF52kEQ_TAhebIzZ',
+  SG_Shopify:   '1Mjbt665WckIGVsG8jE8-_bupMdE4wfqS',
+  SG_Shopee:    '15qY6BtKmj6bLuCaT05SzZuZn54CNH6J6',
+  SG_TikTok:    '10xJpgWIzn2hT1-7MrFVjMJTJzmYzj_6F',
+  SG_FBAds:     '1AKKBOPtMpdlg94NnlgkhqUd0IQNFH8Ym',
+};
+const COUNTRY_CURRENCY = { MY: 'MYR', SG: 'SGD' };
+
 function doGet(e) {
   if (e && e.parameter && e.parameter.debug === '1') return debugFiles();
+  if (e && e.parameter && e.parameter.country) return doGetCountry(e);
 
   try {
     const folder = DriveApp.getFolderById(FOLDER_ID);
@@ -387,4 +403,296 @@ function parseCsvLine(line) {
   }
   result.push(cur.trim());
   return result;
+}
+
+// ================================================================
+// v7: 다국가 엔드포인트 (MY / SG)
+// ================================================================
+function doGetCountry(e) {
+  const country = e.parameter.country;
+  const channel = e.parameter.channel;
+  if (!country || !channel) {
+    return ContentService.createTextOutput(
+      JSON.stringify({success:false, error:'country and channel params required'})
+    ).setMimeType(ContentService.MimeType.JSON);
+  }
+
+  const key = country + '_' + channel;
+  const folderId = FOLDER_MAP[key];
+  if (!folderId) {
+    return ContentService.createTextOutput(
+      JSON.stringify({success:false, error:'Unknown: ' + key})
+    ).setMimeType(ContentService.MimeType.JSON);
+  }
+
+  const cacheModKey  = 'cache_' + key + '_mod';
+  const cacheDataKey = 'cache_' + key + '_data';
+  const props = PropertiesService.getScriptProperties();
+
+  try {
+    const folder = DriveApp.getFolderById(folderId);
+    const iter   = folder.getFiles();
+    const files  = [];
+    while (iter.hasNext()) files.push(iter.next());
+
+    let maxMod = 0;
+    for (const f of files) { const m = f.getLastUpdated().getTime(); if (m > maxMod) maxMod = m; }
+
+    const cachedMod  = props.getProperty(cacheModKey);
+    const cachedData = props.getProperty(cacheDataKey);
+    if (cachedMod && cachedData && parseInt(cachedMod) >= maxMod) {
+      return ContentService.createTextOutput(cachedData).setMimeType(ContentService.MimeType.JSON);
+    }
+
+    const byMo = {};
+    let fileCount = 0;
+
+    for (const file of files) {
+      const result = parseMonthlyFile(file, key, channel);
+      if (!result) continue;
+      const k = result.yr + '_' + result.mo;
+      if (!byMo[k]) byMo[k] = {yr:result.yr, mo:result.mo, sales:0, orders:0, adSpend:0, adOrders:0};
+      byMo[k].sales    += result.sales    || 0;
+      byMo[k].orders   += result.orders   || 0;
+      byMo[k].adSpend  += result.adSpend  || 0;
+      byMo[k].adOrders += result.adOrders || 0;
+      fileCount++;
+    }
+
+    let currency = COUNTRY_CURRENCY[country] || 'USD';
+    if (channel === 'FBAds') currency = 'USD';
+
+    const data = Object.values(byMo).sort((a,b) => a.yr!==b.yr ? a.yr-b.yr : a.mo-b.mo);
+    const out  = JSON.stringify({success:true, country, channel, currency, data, fileCount});
+
+    try { props.setProperty(cacheModKey, String(maxMod)); props.setProperty(cacheDataKey, out); }
+    catch(ce) { Logger.log('Cache save failed: ' + ce.message); }
+
+    return ContentService.createTextOutput(out).setMimeType(ContentService.MimeType.JSON);
+
+  } catch(err) {
+    return ContentService.createTextOutput(
+      JSON.stringify({success:false, error:err.message})
+    ).setMimeType(ContentService.MimeType.JSON);
+  }
+}
+
+// ────────────────────────────────────────────────────────────────
+// 월별 파일 파서 — 파일 1개 → {yr, mo, sales, orders, adSpend, ...}
+// ────────────────────────────────────────────────────────────────
+function parseMonthlyFile(file, key, channel) {
+  const name     = file.getName();
+  const ym       = extractYearMonth(name);
+  if (!ym) { Logger.log('No YM in: ' + name); return null; }
+
+  const nameLower = name.toLowerCase();
+  const mime      = file.getMimeType();
+
+  // FB Ads CSV (Ksisters-Ads-*)
+  if (channel === 'FBAds' || nameLower.includes('ksisters')) {
+    try {
+      return parseFBAdsCsv(file.getBlob().getDataAsString('UTF-8'), ym);
+    } catch(err) { Logger.log('FBAds error: ' + name + ' - ' + err.message); return null; }
+  }
+
+  // CSV (Shopify)
+  if (nameLower.endsWith('.csv')) {
+    const filterJB = key === 'MY_Shopify';
+    try {
+      return parseShopifyCsvMonthly(file.getBlob().getDataAsString('UTF-8'), ym, filterJB);
+    } catch(err) { Logger.log('Shopify CSV error: ' + name + ' - ' + err.message); return null; }
+  }
+
+  // XLSX / Google Sheets
+  let values = null;
+  let tmpId  = null;
+  try {
+    let ssId = file.getId();
+    if (mime !== MimeType.GOOGLE_SHEETS) {
+      const created = Drive.Files.create(
+        {mimeType:'application/vnd.google-apps.spreadsheet', name:'_tmp_'+name},
+        file.getBlob()
+      );
+      tmpId = ssId = created.id;
+    }
+    const ss     = SpreadsheetApp.openById(ssId);
+    const sheet  = ss.getSheets()[0];
+    values = sheet.getDataRange().getValues();
+  } catch(err) {
+    Logger.log('XLSX open error: ' + name + ' - ' + err.message);
+  } finally {
+    if (tmpId) { try { Drive.Files.remove(tmpId); } catch(e) {} }
+  }
+  if (!values) return null;
+
+  const filterJB = (key === 'MY_Shopee' || key === 'SG_Shopee');
+  if (channel === 'Shopee')     return parseShopeeXlsxMonthly(values, ym, filterJB);
+  if (channel === 'TikTok')     return parseTikTokSalesXlsx(values, ym);
+  if (channel === 'TikTokAds')  return parseTikTokAdsXlsx(values, ym);
+  return null;
+}
+
+// ────────────────────────────────────────────────────────────────
+// 파일명에서 연/월 추출
+// ────────────────────────────────────────────────────────────────
+function extractYearMonth(name) {
+  const MONTHS = {jan:1,feb:2,mar:3,apr:4,may:5,jun:6,jul:7,aug:8,sep:9,oct:10,nov:11,dec:12,
+    january:1,february:2,march:3,april:4,june:6,july:7,august:8,september:9,october:10,november:11,december:12};
+
+  // "(Jan 2026)" or "(January 2026)"
+  const m1 = name.match(/\((\w+)\s+(\d{4})\)/i);
+  if (m1) { const mo=MONTHS[m1[1].toLowerCase()]; if(mo) return {yr:parseInt(m1[2]),mo}; }
+
+  // "- 2026-01-01" (date range)
+  const m2 = name.match(/[\s\-_](\d{4})-(\d{2})-\d{2}/);
+  if (m2) return {yr:parseInt(m2[1]), mo:parseInt(m2[2])};
+
+  // "Jan-1-2026" style (e.g. Ksisters-Ads-Jan-1-2026)
+  const parts = name.split(/[-_\s.]/);
+  for (let i = 0; i < parts.length; i++) {
+    const mo = MONTHS[parts[i].toLowerCase()];
+    if (!mo) continue;
+    for (let j = i+1; j < Math.min(i+4, parts.length); j++) {
+      const yr = parseInt(parts[j]);
+      if (yr >= 2020 && yr <= 2035) return {yr, mo};
+    }
+  }
+  return null;
+}
+
+// ────────────────────────────────────────────────────────────────
+// Shopify CSV 월별 집계 (MY: vendor='Jung Beauty' 필터, SG: 전체)
+// ────────────────────────────────────────────────────────────────
+function parseShopifyCsvMonthly(text, ym, filterJB) {
+  if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1);
+  const lines = text.split(/\r?\n/);
+  if (lines.length < 2) return null;
+  const headers  = parseCsvLine(lines[0]).map(h => h.replace(/^"|"$/g,'').trim().toLowerCase());
+  const vendorIdx   = headers.findIndex(h => h.includes('vendor'));
+  const netSalesIdx = headers.findIndex(h => h === 'net sales' || h.includes('net sales'));
+  const ordersIdx   = headers.findIndex(h => h === 'orders' || h === 'net items sold');
+  if (netSalesIdx < 0) { Logger.log('Shopify: no net sales col. headers: ' + headers.join('|')); return null; }
+
+  let totalSales = 0, totalOrders = 0;
+  for (let i = 1; i < lines.length; i++) {
+    const line = lines[i].trim(); if (!line) continue;
+    const row  = parseCsvLine(line); if (!row || row.length < 3) continue;
+    if (filterJB && vendorIdx >= 0) {
+      const vendor = row[vendorIdx].replace(/^"|"$/g,'').trim().toLowerCase();
+      if (vendor !== 'jung beauty') continue;
+    }
+    const sales = toNum(row[netSalesIdx]);
+    if (sales === 0 && filterJB) continue;
+    totalSales  += sales;
+    if (ordersIdx >= 0) totalOrders += toNum(row[ordersIdx]);
+  }
+  return {yr:ym.yr, mo:ym.mo, sales:totalSales, orders:totalOrders};
+}
+
+// ────────────────────────────────────────────────────────────────
+// Shopee XLSX 월별 집계 (MY: Jung Beauty 필터)
+// ────────────────────────────────────────────────────────────────
+function parseShopeeXlsxMonthly(values, ym, filterJB) {
+  if (!values || values.length < 2) return null;
+  const headers = values[0].map(h => String(h||'').trim().toLowerCase());
+  Logger.log('Shopee XLSX headers: ' + headers.join(' | '));
+
+  const nameIdx = headers.findIndex(h =>
+    (h.includes('product') || h.includes('item')) && (h.includes('name') || h.includes('title')));
+  const salesIdx = headers.findIndex(h =>
+    h.includes('net sales') || h.includes('total sales') || h.includes('revenue') ||
+    h.includes('confirmed order') || h.includes('order amount') || h.includes('gmv') ||
+    (h.includes('sales') && !h.includes('unit') && !h.includes('item')));
+  const ordersIdx = headers.findIndex(h =>
+    (h.includes('order') && (h.includes('qty') || h.includes('count') || h === 'orders')) ||
+    h === 'quantity' || h === 'sold');
+
+  if (salesIdx < 0) { Logger.log('Shopee: no sales col found'); return null; }
+
+  let totalSales = 0, totalOrders = 0;
+  for (let i = 1; i < values.length; i++) {
+    const row = values[i];
+    if (!row || row[salesIdx] === '' || row[salesIdx] === null || row[salesIdx] === undefined) continue;
+    if (filterJB && nameIdx >= 0) {
+      const pname = String(row[nameIdx]||'').toLowerCase();
+      if (!pname.includes('jung beauty')) continue;
+    }
+    totalSales  += toNum(row[salesIdx]);
+    if (ordersIdx >= 0) totalOrders += toNum(row[ordersIdx]);
+  }
+  return {yr:ym.yr, mo:ym.mo, sales:totalSales, orders:totalOrders};
+}
+
+// ────────────────────────────────────────────────────────────────
+// TikTok Shop 매출 XLSX 월별 집계
+// ────────────────────────────────────────────────────────────────
+function parseTikTokSalesXlsx(values, ym) {
+  if (!values || values.length < 2) return null;
+  const headers = values[0].map(h => String(h||'').trim().toLowerCase());
+  Logger.log('TikTok Sales headers: ' + headers.join(' | '));
+
+  const gmvIdx = headers.findIndex(h =>
+    h.includes('gmv') || h.includes('revenue') || h.includes('sales amount') ||
+    h.includes('total amount') || h.includes('product amount') || h.includes('order amount'));
+  const ordersIdx = headers.findIndex(h =>
+    (h.includes('order') && !h.includes('cancel') && !h.includes('return') && !h.includes('amount')));
+
+  if (gmvIdx < 0) { Logger.log('TikTok Sales: no GMV col'); return null; }
+
+  let totalGmv = 0, totalOrders = 0;
+  for (let i = 1; i < values.length; i++) {
+    const row = values[i];
+    if (!row || row[gmvIdx] === '' || row[gmvIdx] === null || row[gmvIdx] === undefined) continue;
+    totalGmv   += toNum(row[gmvIdx]);
+    if (ordersIdx >= 0) totalOrders += toNum(row[ordersIdx]);
+  }
+  return {yr:ym.yr, mo:ym.mo, sales:totalGmv, orders:totalOrders};
+}
+
+// ────────────────────────────────────────────────────────────────
+// TikTok Ads XLSX 월별 집계
+// ────────────────────────────────────────────────────────────────
+function parseTikTokAdsXlsx(values, ym) {
+  if (!values || values.length < 2) return null;
+  const headers = values[0].map(h => String(h||'').trim().toLowerCase());
+  Logger.log('TikTok Ads headers: ' + headers.join(' | '));
+
+  const spendIdx = headers.findIndex(h =>
+    h.includes('spend') || h.includes('cost') || h.includes('budget spent'));
+  const purchIdx = headers.findIndex(h =>
+    h.includes('purchase') || h.includes('conversion') || h.includes('order') && !h.includes('cancel'));
+
+  if (spendIdx < 0) { Logger.log('TikTok Ads: no spend col'); return null; }
+
+  let totalSpend = 0, totalOrders = 0;
+  for (let i = 1; i < values.length; i++) {
+    const row = values[i];
+    if (!row || row[spendIdx] === '' || row[spendIdx] === null || row[spendIdx] === undefined) continue;
+    totalSpend  += toNum(row[spendIdx]);
+    if (purchIdx >= 0) totalOrders += toNum(row[purchIdx]);
+  }
+  return {yr:ym.yr, mo:ym.mo, adSpend:totalSpend, adOrders:totalOrders};
+}
+
+// ────────────────────────────────────────────────────────────────
+// FB Ads CSV 월별 집계 (SG Ksisters-Ads-*.csv, USD)
+// ────────────────────────────────────────────────────────────────
+function parseFBAdsCsv(text, ym) {
+  if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1);
+  const lines = text.split(/\r?\n/);
+  if (lines.length < 2) return null;
+  const headers  = parseCsvLine(lines[0]).map(h => h.replace(/^"|"$/g,'').trim());
+  const spendIdx = headers.findIndex(h => h.toLowerCase().includes('amount spent'));
+  const purchIdx = headers.findIndex(h => h.toLowerCase() === 'purchases');
+  if (spendIdx < 0) { Logger.log('FBAds: no spend col'); return null; }
+
+  let totalSpend = 0, totalPurch = 0;
+  for (let i = 1; i < lines.length; i++) {
+    const line = lines[i].trim(); if (!line) continue;
+    const row  = parseCsvLine(line); if (!row || row.length < 5) continue;
+    if (!row[0].match(/^\d{4}-\d{2}-\d{2}/)) continue; // skip non-data rows
+    totalSpend += toNum(row[spendIdx]);
+    if (purchIdx >= 0) totalPurch += toNum(row[purchIdx]);
+  }
+  return {yr:ym.yr, mo:ym.mo, adSpend:totalSpend, adOrders:totalPurch};
 }
