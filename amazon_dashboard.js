@@ -316,6 +316,7 @@ function showDash(){
   document.getElementById('upload-screen').style.display='none';
   document.getElementById('dashboard').style.display='flex';
   applyI18nStatic(); render();
+  updateLinkStatus();
 }
 
 // ──── STATIC i18n ──────────────────────────────────────────────────
@@ -2157,6 +2158,42 @@ function updateDriveSyncStatus() {
     if(syncBtn) syncBtn.setAttribute('data-tooltip', tooltip);
     if(ss) ss.textContent = tooltip;
   }
+  updateLinkStatus();
+}
+
+// ──── 연동 상태 표시 (topbar) ────────────────────────────────────
+let _deployedAt='';
+fetch('deploy_info.json',{cache:'no-store'})
+  .then(r=>r.ok?r.json():null)
+  .then(j=>{
+    if(j&&j.deployedAt){
+      const m=j.deployedAt.match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}:\d{2})/);
+      _deployedAt=m?((+m[2])+'/'+(+m[3])+' '+m[4]):j.deployedAt;
+      updateLinkStatus();
+    }
+  }).catch(()=>{});
+
+function updateLinkStatus(){
+  const el=document.getElementById('link-status'); if(!el) return;
+  const parts=[];
+  // 1) 데이터 최신 날짜 (매출 또는 광고 데이터가 있는 마지막 날)
+  try{
+    const rows=(allData||[]).filter(d=>d.sales>0||d.adSpend>0||d.impr>0);
+    if(rows.length){
+      rows.sort((a,b)=>new Date(a.yr,a.mo-1,a.day)-new Date(b.yr,b.mo-1,b.day));
+      const l=rows[rows.length-1];
+      parts.push((isKo()?'데이터 ~':'Data ~')+l.mo+'/'+l.day);
+    }
+  }catch(e){}
+  // 2) 마지막 드라이브 동기화 시각 (한국 시간)
+  const ls=localStorage.getItem(DRIVE_SYNC_KEY);
+  if(ls){
+    const d=new Date(ls);
+    parts.push((isKo()?'동기화 ':'Synced ')+(d.getMonth()+1)+'/'+d.getDate()+' '+String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0'));
+  }
+  // 3) 사이트 배포(업데이트) 시각
+  if(_deployedAt) parts.push((isKo()?'업데이트 ':'Updated ')+_deployedAt);
+  el.textContent=parts.join(' · ');
 }
 
 // Auto-sync on dashboard open (silent)
