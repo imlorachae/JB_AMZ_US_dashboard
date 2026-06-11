@@ -99,17 +99,35 @@
   - `fmtMetric`, KPI 카드, 차트 축/툴팁, 캠페인·그룹·키워드 테이블의 `cpcFmt` 모두 동일 규칙 적용
   - (참고: 매출/광고비 등 큰 금액은 기존처럼 정수 반올림 `money`/`pct` 유지 — 단가성·비율성 지표만 2자리로 분리)
 
-## 6. 데이터 흐름 요약 (전체 파이프라인)
+## 6. 데이터 흐름 요약 (전체 파이프라인 — 2026-06-11 실사로 전면 갱신)
+
+> Apps Script가 **2개**다 (둘 다 lora.chae@ksisters.sg 소유). 역할이 다르므로 절대 혼동 금지.
 
 ```
-Google Drive (JB_global_google)
- ├─ 01_Claude_Data/JB_Master_Data (시트) ──→ PRELOADED (일자별 매출/세션/광고 요약)
- └─ 02_ads/Sponsored_Products_검색어_보고서_xxxx.xlsx (raw 키워드 리포트)
-        ├─→ PRELOADED의 impr/clicks/adOrders (일자별 합산)
-        └─→ CAMPAIGN_DAILY (날짜×캠페인 피벗, 실측)
+[입력] 아마존 보고서 메일 (no-reply@ads.amazon.com, 첨부 없음·링크만)
+   └─ 사람이 "보고서 다운로드" 클릭 → xlsx를 Drive에 업로드 (자동화 불가: 링크가 로그인 필요)
+        ├─ 01_Claude_Data/01_Sales/  (매출·비즈니스 보고서)
+        └─ 01_Claude_Data/02_ads/   (광고 보고서)
 
-업로드 시 mergeData()가 병합 (8일 컷오프로 확정 데이터 보호)
+[스크립트 1] JB Dashboard Server (원조, 6/1) — "백업 + 가공"
+   매일 밤 10~11시 KST 트리거(manualUpdateMasterSheet) + URL 호출 시:
+   01_Claude_Data 전체 파일 파싱 → 최근 7일 일별 행 생성
+   → JB_Master_Data 시트(master_data_upload 탭)에 날짜별 upsert  ← 이것이 "백업"
+   ⚠ 2026-06-11 수정: 날짜 비교를 getDisplayValues()로 (Date/문자열 혼합 중복 버그)
+   ⚠ cleanupMasterSheet() = 중복 제거+정렬 일회성 함수 (Code.gs 말미)
+
+[스크립트 2] JB Dashboard Sync (6/10) — "대시보드 데이터 공급"
+   Gmail 첨부 → 02_ads 저장 시도(현재 메일에 첨부가 없어 무용) + doGet 캐시 제공
+   대시보드 DRIVE_SCRIPT_URL = 이 스크립트의 /exec (AKfycbyz...)
+
+[대시보드] amazon_dashboard.js
+   Sync URL 호출(하루 1회 자동 + 동기화 버튼) → mergeData() 병합 (8일 컷오프)
+   JB_Master_Data ──(수동/세션 작업)──→ PRELOADED 하드코딩
 ```
+
+**역사적 사고 (2026-06-10)**: 원래 대시보드가 Server URL을 호출했고 백업은 그 호출에 얹혀 돌았다.
+6/10 타임아웃 개선 때 대시보드를 Sync URL로 교체하면서 **백업 실행 경로가 소리 없이 끊겼다.**
+→ 재발 방지: 백업은 이제 독립 트리거로 돈다. **URL 교체·구조 변경 시 이 섹션을 반드시 갱신할 것.**
 
 ---
 
