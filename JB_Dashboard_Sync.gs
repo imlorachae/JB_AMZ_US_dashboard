@@ -304,13 +304,19 @@ function syncGmailToDrive() {
 }
 
 // ================================================================
-// 7. 캐시 강제 초기화 (수동 실행용)
+// 7. 캐시 강제 초기화 (수동 실행용) — 전체 채널 포함
 // ================================================================
 function clearCache() {
   const props = PropertiesService.getScriptProperties();
-  props.deleteProperty('doget_cache_mod');
-  props.deleteProperty('doget_cache_data');
-  Logger.log('Cache cleared');
+  const keys = props.getKeys();
+  let cleared = 0;
+  for (const k of keys) {
+    if (k.startsWith('doget_cache') || k.startsWith('cache_')) {
+      props.deleteProperty(k);
+      cleared++;
+    }
+  }
+  Logger.log('Cache cleared: ' + cleared + ' entries');
 }
 
 // ================================================================
@@ -544,12 +550,20 @@ function extractYearMonth(name) {
   const m1 = name.match(/\((\w+)\s+(\d{4})\)/i);
   if (m1) { const mo=MONTHS[m1[1].toLowerCase()]; if(mo) return {yr:parseInt(m1[2]),mo}; }
 
+  // "(Jan2026)" — no space between month and year
+  const m1b = name.match(/\(([A-Za-z]+?)(\d{4})\)/i);
+  if (m1b) { const mo=MONTHS[m1b[1].toLowerCase()]; if(mo) return {yr:parseInt(m1b[2]),mo}; }
+
+  // "20260201" or "20260201_20260228" — YYYYMMDD
+  const m4 = name.match(/(\d{4})(\d{2})\d{2}/);
+  if (m4) { const yr=parseInt(m4[1]),mo=parseInt(m4[2]); if(yr>=2020&&mo>=1&&mo<=12) return {yr,mo}; }
+
   // "- 2026-01-01" (date range)
   const m2 = name.match(/[\s\-_](\d{4})-(\d{2})-\d{2}/);
   if (m2) return {yr:parseInt(m2[1]), mo:parseInt(m2[2])};
 
-  // "Jan-1-2026" style (e.g. Ksisters-Ads-Jan-1-2026)
-  const parts = name.split(/[-_\s.]/);
+  // "Jan-1-2026" or "2026-Jan" style — search forward AND backward
+  const parts = name.split(/[-_\s.()]/);
   for (let i = 0; i < parts.length; i++) {
     const mo = MONTHS[parts[i].toLowerCase()];
     if (!mo) continue;
@@ -557,8 +571,20 @@ function extractYearMonth(name) {
       const yr = parseInt(parts[j]);
       if (yr >= 2020 && yr <= 2035) return {yr, mo};
     }
+    for (let j = i-1; j >= Math.max(0, i-4); j--) {
+      const yr = parseInt(parts[j]);
+      if (yr >= 2020 && yr <= 2035) return {yr, mo};
+    }
   }
   return null;
+}
+
+// 헤더 행 인덱스 탐색 — 첫 몇 행 중 testFn을 만족하는 행 반환
+function findHeaderRowIdx(values, testFn) {
+  for (let i = 0; i < Math.min(5, values.length); i++) {
+    if (testFn(values[i].map(h => String(h||'').trim().toLowerCase()))) return i;
+  }
+  return 0;
 }
 
 // ────────────────────────────────────────────────────────────────
@@ -595,23 +621,25 @@ function parseShopifyCsvMonthly(text, ym, filterJB) {
 // ────────────────────────────────────────────────────────────────
 function parseShopeeXlsxMonthly(values, ym, filterJB) {
   if (!values || values.length < 2) return null;
-  const headers = values[0].map(h => String(h||'').trim().toLowerCase());
-  Logger.log('Shopee XLSX headers: ' + headers.join(' | '));
+  const hi = findHeaderRowIdx(values, row => row.some(h => h === 'item id' || (h.includes('item') && h.includes('id'))));
+  const headers = values[hi].map(h => String(h||'').trim().toLowerCase());
+  Logger.log('Shopee XLSX headers (row ' + hi + '): ' + headers.join(' | '));
 
   const nameIdx = headers.findIndex(h =>
     (h.includes('product') || h.includes('item')) && (h.includes('name') || h.includes('title')));
   const salesIdx = headers.findIndex(h =>
     h.includes('net sales') || h.includes('total sales') || h.includes('revenue') ||
     h.includes('confirmed order') || h.includes('order amount') || h.includes('gmv') ||
-    (h.includes('sales') && !h.includes('unit') && !h.includes('item')));
+    (h.includes('sales') && h.includes('paid') && !h.includes('unit')) ||
+    (h.includes('sales') && !h.includes('unit') && !h.includes('item') && !h.includes('per') && !h.includes('placed')));
   const ordersIdx = headers.findIndex(h =>
-    (h.includes('order') && (h.includes('qty') || h.includes('count') || h === 'orders')) ||
-    h === 'quantity' || h === 'sold');
+    h === 'paid order' || h === 'orders' || h === 'quantity' || h === 'sold' ||
+    (h.includes('order') && (h.includes('qty') || h.includes('count'))));
 
   if (salesIdx < 0) { Logger.log('Shopee: no sales col found'); return null; }
 
   let totalSales = 0, totalOrders = 0;
-  for (let i = 1; i < values.length; i++) {
+  for (let i = hi + 1; i < values.length; i++) {
     const row = values[i];
     if (!row || row[salesIdx] === '' || row[salesIdx] === null || row[salesIdx] === undefined) continue;
     if (filterJB && nameIdx >= 0) {
@@ -629,19 +657,21 @@ function parseShopeeXlsxMonthly(values, ym, filterJB) {
 // ────────────────────────────────────────────────────────────────
 function parseTikTokSalesXlsx(values, ym) {
   if (!values || values.length < 2) return null;
-  const headers = values[0].map(h => String(h||'').trim().toLowerCase());
-  Logger.log('TikTok Sales headers: ' + headers.join(' | '));
+  const hi = findHeaderRowIdx(values, row => row.some(h => h === 'gmv' || h === 'sku id' || h === 'id'));
+  const headers = values[hi].map(h => String(h||'').trim().toLowerCase());
+  Logger.log('TikTok Sales headers (row ' + hi + '): ' + headers.join(' | '));
 
   const gmvIdx = headers.findIndex(h =>
-    h.includes('gmv') || h.includes('revenue') || h.includes('sales amount') ||
+    h === 'gmv' || h.includes('revenue') || h.includes('sales amount') ||
     h.includes('total amount') || h.includes('product amount') || h.includes('order amount'));
   const ordersIdx = headers.findIndex(h =>
-    (h.includes('order') && !h.includes('cancel') && !h.includes('return') && !h.includes('amount')));
+    h === 'orders' || h === 'sku orders' ||
+    (h.includes('order') && !h.includes('cancel') && !h.includes('return') && !h.includes('amount') && !h.includes('rate')));
 
   if (gmvIdx < 0) { Logger.log('TikTok Sales: no GMV col'); return null; }
 
   let totalGmv = 0, totalOrders = 0;
-  for (let i = 1; i < values.length; i++) {
+  for (let i = hi + 1; i < values.length; i++) {
     const row = values[i];
     if (!row || row[gmvIdx] === '' || row[gmvIdx] === null || row[gmvIdx] === undefined) continue;
     totalGmv   += toNum(row[gmvIdx]);
@@ -655,18 +685,20 @@ function parseTikTokSalesXlsx(values, ym) {
 // ────────────────────────────────────────────────────────────────
 function parseTikTokAdsXlsx(values, ym) {
   if (!values || values.length < 2) return null;
-  const headers = values[0].map(h => String(h||'').trim().toLowerCase());
-  Logger.log('TikTok Ads headers: ' + headers.join(' | '));
+  const hi = findHeaderRowIdx(values, row => row.some(h => h === 'cost' || h === 'campaign name' || h.includes('spend')));
+  const headers = values[hi].map(h => String(h||'').trim().toLowerCase());
+  Logger.log('TikTok Ads headers (row ' + hi + '): ' + headers.join(' | '));
 
   const spendIdx = headers.findIndex(h =>
-    h.includes('spend') || h.includes('cost') || h.includes('budget spent'));
+    h === 'cost' || h.includes('spend') || h.includes('budget spent'));
   const purchIdx = headers.findIndex(h =>
-    h.includes('purchase') || h.includes('conversion') || h.includes('order') && !h.includes('cancel'));
+    h === 'sku orders' || h.includes('purchase') ||
+    (h.includes('order') && !h.includes('cancel') && !h.includes('cost') && !h.includes('per')));
 
   if (spendIdx < 0) { Logger.log('TikTok Ads: no spend col'); return null; }
 
   let totalSpend = 0, totalOrders = 0;
-  for (let i = 1; i < values.length; i++) {
+  for (let i = hi + 1; i < values.length; i++) {
     const row = values[i];
     if (!row || row[spendIdx] === '' || row[spendIdx] === null || row[spendIdx] === undefined) continue;
     totalSpend  += toNum(row[spendIdx]);
