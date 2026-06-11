@@ -349,6 +349,7 @@ function applyI18nStatic(){
   document.getElementById('ct-bar').textContent=T('bar');
   document.getElementById('ct-line').textContent=T('line');
   document.getElementById('ct-mix').textContent=T('mix');
+  {const _cm=document.getElementById('ct-mix'); if(_cm) _cm.style.display=activeCountry==='US'?'':'none';}
   document.getElementById('donut-title').textContent=T('adVsOrg');
   dpSetVal('rng-from',rangeFrom); dpSetVal('rng-to',rangeTo);
   // upload screen

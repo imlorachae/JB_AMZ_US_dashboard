@@ -166,5 +166,33 @@
 
 ---
 
+## 8. 다국가 지원 — Drive 폴더 ID 맵 (2026-06-11 추가)
+
+> Apps Script `JB_Dashboard_Sync.gs` 의 `FOLDER_MAP` 상수와 일치해야 함.
+
+| 국가 | 채널 | 키 | 폴더 ID | 파일 포맷 |
+|------|------|-----|---------|-----------|
+| MY | Shopify | `MY_Shopify` | `15HeWVH6SXK2TnkjrlQcvUe9IEtKd2skc` | CSV "Shopify x Jung Beauty (MMM YYYY).csv" — 다브랜드, vendor=Jung Beauty 필터 |
+| MY | Shopee | `MY_Shopee` | `1t2-mB1n4FtfLL0Q4cJLIJtlf635q2D0U` | XLSX "Shopee x Jung Beauty (MMM YYYY).xlsx" — 다브랜드, 제품명 Jung Beauty 필터 |
+| MY | TikTok Shop | `MY_TikTok` | `1Sq4rqzeSA95ocmNpUVez0hUq8Lg03TG_` | XLSX "Tiktok x Jung Beauty (MMM YYYY).xlsx" |
+| MY | TikTok Ads | `MY_TikTokAds` | `1N9t680BVR8cgoaTVCF52kEQ_TAhebIzZ` | XLSX "Tiktok Ads (MMM YYYY).xlsx" |
+| SG | Shopify | `SG_Shopify` | `1Mjbt665WckIGVsG8jE8-_bupMdE4wfqS` | CSV "Jung Beauty - Sales (Monthly by variant) - YYYY-MM-DD - YYYY-MM-DD.csv" |
+| SG | Shopee | `SG_Shopee` | `15qY6BtKmj6bLuCaT05SzZuZn54CNH6J6` | XLSX "Copy of JB Shopee sales..." |
+| SG | TikTok Shop | `SG_TikTok` | `10xJpgWIzn2hT1-7MrFVjMJTJzmYzj_6F` | XLSX "Copy of JB TikTok sales..." |
+| SG | FB Ads | `SG_FBAds` | `1AKKBOPtMpdlg94NnlgkhqUd0IQNFH8Ym` | CSV "Ksisters-Ads-MMM-D-YYYY-MMM-D-YYYY.csv" (USD) |
+
+**통화**: MY → MYR, SG → SGD (예외: SG FB Ads는 USD)
+
+**Apps Script 엔드포인트**: 기존 `doGet(e)` 에 `?country=MY&channel=Shopify` 파라미터 추가 → `doGetCountry(e)` 분기.  
+배포 후 반환 형식: `{success, country, channel, currency, data:[{yr,mo,sales,orders,adSpend,...}], fileCount}`
+
+**프론트엔드 흐름**: topbar 국가 버튼(US/MY/SG) → 채널 버튼(Shopify/Shopee/…) → `syncCountryData()` fetch → `renderMysg()`.  
+캐시: `mysgCache` 객체(세션 중 재사용), Apps Script는 `PropertiesService` 캐시(`cache_MY_Shopify_mod/data` 등).
+
+**MY Shopee/Shopify 다브랜드 주의**: 파일에 ENTROPY, SAMO ONDOH, AMUSE 등 타 브랜드가 섞여 있음.  
+Apps Script 파서에서 `vendor === 'Jung Beauty'` (Shopify) 또는 제품명 `includes('jung beauty')` (Shopee) 로 Jung Beauty 행만 집계.
+
+---
+
 ### 확인이 더 필요한 부분 (추측 금지 원칙에 따라 미확정으로 표기)
 - `vine_adj` 산출의 "정확한 기준값"(예: 왜 -2895인지 등 원천 계산 근거) — 코드에는 결과값만 박혀있고 산출 로직은 없음 → 사람이 Drive 원본 데이터를 보고 직접 입력한 것으로 추정되나 산출 기준 자체는 코드로 확인 불가
