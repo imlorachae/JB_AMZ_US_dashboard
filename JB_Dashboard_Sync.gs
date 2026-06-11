@@ -35,8 +35,9 @@ const FOLDER_MAP = {
   SG_Shopee:    '15qY6BtKmj6bLuCaT05SzZuZn54CNH6J6',
   SG_TikTok:    '10xJpgWIzn2hT1-7MrFVjMJTJzmYzj_6F',
   SG_FBAds:     '1AKKBOPtMpdlg94NnlgkhqUd0IQNFH8Ym',
+  UAE_AMZ:      '', // TODO: Drive 폴더 ID 추가 필요
 };
-const COUNTRY_CURRENCY = { MY: 'MYR', SG: 'SGD' };
+const COUNTRY_CURRENCY = { MY: 'MYR', SG: 'SGD', UAE: 'AED' };
 
 function doGet(e) {
   if (e && e.parameter && e.parameter.debug === '1') return debugFiles();

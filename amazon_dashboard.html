@@ -51,12 +51,6 @@
       <span class="topbar-badge" id="topbar-badge">-</span>
     </div>
     <div class="topbar-right">
-      <div class="currency-group" id="country-group">
-        <button class="cur-btn active" data-country="US" onclick="setCountry('US')">US</button>
-        <button class="cur-btn" data-country="MY" onclick="setCountry('MY')">MY</button>
-        <button class="cur-btn" data-country="SG" onclick="setCountry('SG')">SG</button>
-      </div>
-      <div class="currency-group" id="channel-group" style="display:none"></div>
       <div class="mode-toggle" id="mode-toggle"></div>
       <div class="tab-group" id="tab-group"></div>
       <div class="currency-group" id="vine-group">
@@ -66,6 +60,7 @@
       <div class="currency-group">
         <button class="cur-btn active" onclick="setCurrency('USD',this)">USD</button>
         <button class="cur-btn" onclick="setCurrency('SGD',this)">SGD</button>
+        <button class="cur-btn" onclick="setCurrency('MYR',this)">MYR</button>
         <button class="cur-btn" onclick="setCurrency('KRW',this)">KRW</button>
       </div>
       <button class="icon-btn" id="drive-sync-btn" onclick="syncFromDrive()">동기화</button>

@@ -27,6 +27,7 @@ let kwSortCol='sales', kwSortDir=-1;
 // ── Multi-country state ───────────────────────────────────────────
 let activeCountry='US', activeChannel='AMZ';
 const mysgCache={};
+let sidebarExpanded={US:true,MY:false,SG:false,UAE:false};
 let trendCI=null;
 let _gwCache=null; // global week list cache
 let rangeFrom='', rangeTo='';
@@ -442,14 +443,32 @@ const SIDEBAR_ITEMS=[
   ['consolidated','📊',()=>isKo()?'종합 대시보드':'Overview'],
   ['settings','⚙️',()=>isKo()?'설정':'Settings'],
 ];
+const COUNTRY_FLAGS={US:'🇺🇸',MY:'🇲🇾',SG:'🇸🇬',UAE:'🇦🇪'};
+const COUNTRY_NAMES={US:'United States',MY:'Malaysia',SG:'Singapore',UAE:'UAE'};
+
 function renderSidebar(){
   const sb=document.getElementById('sidebar');
   if(!sb) return;
-  sb.innerHTML='<div class="sidebar-logo">📊 JungBeauty</div>'+
-    SIDEBAR_ITEMS.map(([m,ic,lb])=>
-      `<button class="sidebar-btn ${m===appMode?'active':''}" onclick="setMode('${m}')"><span class="ic">${ic}</span><span>${lb()}</span></button>`).join('')+
+  const tree=Object.keys(COUNTRY_CHANNELS).map(c=>{
+    const isActive=c===activeCountry;
+    const isExp=sidebarExpanded[c];
+    const chs=COUNTRY_CHANNELS[c]||[];
+    const chItems=isExp?chs.map(ch=>{
+      const chActive=isActive&&ch.id===activeChannel;
+      return `<button class="sidebar-channel${chActive?' active':''}" onclick="setCountryChannel('${c}','${ch.id}')">${ch.label}</button>`;
+    }).join(''):'';
+    return `<button class="sidebar-country${isActive?' active':''}${isExp?' expanded':''}" onclick="toggleCountry('${c}')"><span>${COUNTRY_FLAGS[c]}</span><span class="sc-name">${c}</span><span class="sc-arrow">${isExp?'▾':'▸'}</span></button>${chItems}`;
+  }).join('');
+  const modes=SIDEBAR_ITEMS.map(([m,ic,lb])=>
+    `<button class="sidebar-btn ${m===appMode?'active':''}" onclick="setMode('${m}')"><span class="ic">${ic}</span><span>${lb()}</span></button>`).join('');
+  sb.innerHTML=
+    '<div class="sidebar-logo">📊 JungBeauty</div>'+
+    '<div class="sidebar-section-lbl">'+(isKo()?'국가 · 채널':'Country · Channel')+'</div>'+
+    tree+
+    '<div class="sidebar-divider"></div>'+
+    modes+
     '<div class="sidebar-spacer"></div>'+
-    `<div class="sidebar-foot">${activeCountry} · ${activeCountry==='US'?'Amazon':(CHANNEL_LABELS&&CHANNEL_LABELS[activeChannel])||activeChannel}</div>`;
+    `<div class="sidebar-foot">${COUNTRY_FLAGS[activeCountry]} ${activeCountry} · ${CHANNEL_LABELS[activeChannel]||activeChannel}</div>`;
 }
 function renderConsolidatedPlaceholder(){
   const el=document.getElementById('overview-section');
@@ -2955,6 +2974,7 @@ const COUNTRY_CHANNELS = {
         {id:'TikTok',label:'TikTok'},{id:'TikTokAds',label:'TikTok Ads'}],
   SG:  [{id:'Shopify',label:'Shopify'},{id:'Shopee',label:'Shopee'},
         {id:'TikTok',label:'TikTok'},{id:'FBAds',label:'FB Ads'}],
+  UAE: [{id:'AMZ',label:'Amazon'}],
 };
 const CHANNEL_LABELS = {
   AMZ:'Amazon',Shopify:'Shopify',Shopee:'Shopee',
@@ -2962,46 +2982,29 @@ const CHANNEL_LABELS = {
 };
 const MO_LABELS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
-function setCountry(country) {
-  if(activeCountry===country) return;
-  activeCountry = country;
-  const channels = COUNTRY_CHANNELS[country]||[];
-  activeChannel  = channels.length ? channels[0].id : '';
-
-  // Country button active state
-  document.querySelectorAll('#country-group .cur-btn').forEach(btn=>{
-    btn.classList.toggle('active', btn.dataset.country===country);
-  });
-
-  // Channel group
-  const cg=document.getElementById('channel-group');
-  if(country==='US'){
-    if(cg) cg.style.display='none';
-  } else {
-    if(cg){
-      cg.style.display='';
-      cg.innerHTML=channels.map(ch=>
-        `<button class="cur-btn ${ch.id===activeChannel?'active':''}" data-channel="${ch.id}" onclick="setChannel('${ch.id}')">${ch.label}</button>`
-      ).join('');
-    }
+function toggleCountry(country) {
+  const wasExp = sidebarExpanded[country];
+  Object.keys(sidebarExpanded).forEach(c => sidebarExpanded[c]=false);
+  if (wasExp && activeCountry===country) {
+    // already active+expanded → just collapse, stay on same view
+    renderSidebar(); return;
   }
+  sidebarExpanded[country]=true;
+  const firstCh=(COUNTRY_CHANNELS[country]||[])[0]?.id||'AMZ';
+  setCountryChannel(country, firstCh);
+}
 
+function setCountryChannel(country, channel) {
+  activeCountry=country; activeChannel=channel;
+  Object.keys(sidebarExpanded).forEach(c => sidebarExpanded[c]=false);
+  sidebarExpanded[country]=true;
   applyI18nStatic();
-  if(country==='US'){
-    render();
-  } else {
-    loadAndRenderMysg(country, activeChannel);
-  }
+  if(country==='US') render();
+  else loadAndRenderMysg(country, channel);
 }
 
-function setChannel(channel) {
-  if(activeChannel===channel) return;
-  activeChannel=channel;
-  document.querySelectorAll('#channel-group .cur-btn').forEach(btn=>{
-    btn.classList.toggle('active', btn.dataset.channel===channel);
-  });
-  loadAndRenderMysg(activeCountry, channel);
-}
+function setCountry(country){ setCountryChannel(country,(COUNTRY_CHANNELS[country]||[])[0]?.id||'AMZ'); }
+function setChannel(channel){ setCountryChannel(activeCountry, channel); }
 
 async function syncCountryData(country, channel) {
   const key=country+'_'+channel;
