@@ -1,7 +1,7 @@
 # JungBeauty Amazon 대시보드 — 약속된 규칙 (Conventions)
 
 > 코드(`amazon_dashboard.js`)에서 직접 확인된 사실만 기록합니다. 확인되지 않은 부분은 "확인 필요"로 명시.
-> 최종 갱신: 2026-06-08
+> 최종 갱신: 2026-06-11
 
 ---
 
@@ -152,6 +152,17 @@
   .content{padding:14px 20px;max-width:1440px;margin:0 auto;width:100%;box-sizing:border-box}
   ```
 - 결과: Sales/Ads Overview/Campaign/Ad Group/KW 등 모든 탭이 동일 너비로 렌더링
+
+### 7-4. Topbar 구조 (2026-06-11)
+- **topbar**: `flex-wrap:nowrap` — 항상 1줄 유지 (flex-wrap:wrap 금지)
+  - `.topbar-left`: 로고 + 배지만 (flex-shrink:0)
+  - `.topbar-right`: 탭 버튼들 + vine 버튼 + 통화 버튼 + 동기화 (flex-wrap:nowrap)
+- **#status-bar**: topbar 바로 아래 별도 고정 바 (position:sticky; top:49px; z-index:99)
+  - `id="link-status"` span이 이 안에 있음 — "Data ~6/9 · Synced · Updated" 텍스트 표시
+  - 이전에 topbar-left 안에 있었으나 topbar 줄바꿈 유발로 분리
+- **Vine 버튼 (`id="vine-group"`)**: Sales 탭에서만 표시, 나머지 탭(Ads/Overview/Settings)에선 숨김
+  - `applyI18nStatic()`에서 `appMode==='sales'`일 때만 display 활성화
+  - **이 show/hide 로직을 다른 render 함수에 추가하거나 vine-group을 전체 노출로 되돌리지 않도록 주의**
 
 ---
 
