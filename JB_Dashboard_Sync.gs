@@ -393,7 +393,7 @@ function findCol(headers, candidates) {
 function toNum(v) {
   if (v === null || v === undefined || v === '') return 0;
   if (typeof v === 'number') return isNaN(v) ? 0 : v;
-  return parseFloat(String(v).replace(/[$,%]/g, '').replace(/,/g, '').trim()) || 0;
+  return parseFloat(String(v).replace(/[^0-9.-]/g, '')) || 0;
 }
 
 function parseCsvLine(line) {
@@ -432,8 +432,8 @@ function doGetCountry(e) {
     ).setMimeType(ContentService.MimeType.JSON);
   }
 
-  const cacheModKey  = 'cache_' + key + '_mod';
-  const cacheDataKey = 'cache_' + key + '_data';
+  const cacheModKey  = 'cachev11_' + key + '_mod';
+  const cacheDataKey = 'cachev11_' + key + '_data';
   const props = PropertiesService.getScriptProperties();
 
   try {
@@ -453,10 +453,12 @@ function doGetCountry(e) {
 
     const byMo = {};
     let fileCount = 0;
+    const filesFound = files.length;
+    const parseErrors = [];
 
     for (const file of files) {
       const result = parseMonthlyFile(file, key, channel);
-      if (!result) continue;
+      if (!result) { parseErrors.push(file.getName()); continue; }
       const k = result.yr + '_' + result.mo;
       if (!byMo[k]) byMo[k] = {yr:result.yr, mo:result.mo, sales:0, orders:0, adSpend:0, adOrders:0};
       byMo[k].sales    += result.sales    || 0;
@@ -470,7 +472,7 @@ function doGetCountry(e) {
     if (channel === 'FBAds') currency = 'USD';
 
     const data = Object.values(byMo).sort((a,b) => a.yr!==b.yr ? a.yr-b.yr : a.mo-b.mo);
-    const out  = JSON.stringify({success:true, country, channel, currency, data, fileCount});
+    const out  = JSON.stringify({success:true, country, channel, currency, data, fileCount, filesFound, parseErrors});
 
     try { props.setProperty(cacheModKey, String(maxMod)); props.setProperty(cacheDataKey, out); }
     catch(ce) { Logger.log('Cache save failed: ' + ce.message); }
@@ -534,7 +536,7 @@ function parseMonthlyFile(file, key, channel) {
 
   const filterJB = (key === 'MY_Shopee' || key === 'SG_Shopee');
   if (channel === 'Shopee')     return parseShopeeXlsxMonthly(values, ym, filterJB);
-  if (channel === 'TikTok')     return parseTikTokSalesXlsx(values, ym);
+  if (channel === 'TikTok')     return parseTikTokSalesXlsx(values, ym, false);
   if (channel === 'TikTokAds')  return parseTikTokAdsXlsx(values, ym);
   return null;
 }
@@ -617,7 +619,10 @@ function parseShopifyCsvMonthly(text, ym, filterJB) {
 }
 
 // ────────────────────────────────────────────────────────────────
-// Shopee XLSX 월별 집계 (MY: Jung Beauty 필터)
+// Shopee XLSX 월별 집계 (MY/SG: Jung Beauty 필터)
+// v8 fix: ① 'Product' 단독 헤더도 인식 (JB 필터 무력화 버그 복구 — 타 브랜드 합산 방지)
+//         ② variation 하위행 제외, 상품 합계행만 집계 (2중 카운트 방지)
+//         ③ 매출 컬럼 우선순위 명시: Confirmed > Paid > Net/Total/GMV > Placed
 // ────────────────────────────────────────────────────────────────
 function parseShopeeXlsxMonthly(values, ym, filterJB) {
   if (!values || values.length < 2) return null;
@@ -625,23 +630,41 @@ function parseShopeeXlsxMonthly(values, ym, filterJB) {
   const headers = values[hi].map(h => String(h||'').trim().toLowerCase());
   Logger.log('Shopee XLSX headers (row ' + hi + '): ' + headers.join(' | '));
 
-  const nameIdx = headers.findIndex(h =>
-    (h.includes('product') || h.includes('item')) && (h.includes('name') || h.includes('title')));
-  const salesIdx = headers.findIndex(h =>
-    h.includes('net sales') || h.includes('total sales') || h.includes('revenue') ||
-    h.includes('confirmed order') || h.includes('order amount') || h.includes('gmv') ||
-    (h.includes('sales') && h.includes('paid') && !h.includes('unit')) ||
-    (h.includes('sales') && !h.includes('unit') && !h.includes('item') && !h.includes('per') && !h.includes('placed')));
-  const ordersIdx = headers.findIndex(h =>
-    h === 'paid order' || h === 'orders' || h === 'quantity' || h === 'sold' ||
-    (h.includes('order') && (h.includes('qty') || h.includes('count'))));
-
+  const findCol = preds => { for (var p = 0; p < preds.length; p++) { const idx = headers.findIndex(preds[p]); if (idx >= 0) return idx; } return -1; };
+  const isAmt = h => h.indexOf('per') < 0 && h.indexOf('rate') < 0 && h.indexOf('unit') < 0 && h.indexOf('conversion') < 0;
+  const salesIdx = findCol([
+    h => h.includes('sales') && h.includes('confirmed') && isAmt(h),
+    h => h.includes('sales') && h.includes('paid') && isAmt(h),
+    h => h.includes('net sales') || h.includes('total sales') || h.includes('revenue') || h.includes('gmv') || h.includes('order amount'),
+    h => h.includes('sales') && h.includes('placed') && isAmt(h),
+    h => h.includes('sales') && isAmt(h) && !h.includes('item'),
+  ]);
+  const ordersIdx = findCol([
+    h => h === 'confirmed order' || h === 'confirmed orders',
+    h => h === 'paid order' || h === 'paid orders',
+    h => h === 'placed order' || h === 'placed orders',
+    h => h === 'orders' || h === 'quantity' || h === 'sold',
+    h => h.includes('order') && (h.includes('qty') || h.includes('count')),
+  ]);
   if (salesIdx < 0) { Logger.log('Shopee: no sales col found'); return null; }
+  Logger.log('Shopee salesCol="' + headers[salesIdx] + '" ordersCol="' + (ordersIdx >= 0 ? headers[ordersIdx] : '-') + '"');
+
+  // 상품명: 'product name'류 우선, 없으면 'product'/'item' 단독 헤더 (Top Performing Products 양식)
+  let nameIdx = headers.findIndex(h =>
+    (h.includes('product') || h.includes('item')) && (h.includes('name') || h.includes('title')));
+  if (nameIdx < 0) nameIdx = headers.findIndex(h => h === 'product' || h === 'item');
+
+  // variation 하위행 식별 (값이 '-'가 아니면 하위행)
+  const varIdx = headers.findIndex(h => h === 'variation id' || h === 'variation name');
 
   let totalSales = 0, totalOrders = 0;
   for (let i = hi + 1; i < values.length; i++) {
     const row = values[i];
     if (!row || row[salesIdx] === '' || row[salesIdx] === null || row[salesIdx] === undefined) continue;
+    if (varIdx >= 0) {
+      const vv = String(row[varIdx] == null ? '' : row[varIdx]).trim();
+      if (vv && vv !== '-') continue;
+    }
     if (filterJB && nameIdx >= 0) {
       const pname = String(row[nameIdx]||'').toLowerCase();
       if (!pname.includes('jung beauty')) continue;
@@ -655,18 +678,22 @@ function parseShopeeXlsxMonthly(values, ym, filterJB) {
 // ────────────────────────────────────────────────────────────────
 // TikTok Shop 매출 XLSX 월별 집계
 // ────────────────────────────────────────────────────────────────
-function parseTikTokSalesXlsx(values, ym) {
+// v9 fix: ① GMV가 "RM432.28" 같은 통화 접두 문자열이라 toNum=0 되던 것 — 통화문자 제거 후 파싱
+//         ② Jung Beauty 필터 추가 (멀티브랜드 샵 export에서 타 브랜드 제외)
+function parseTikTokSalesXlsx(values, ym, filterJB) {
   if (!values || values.length < 2) return null;
   const hi = findHeaderRowIdx(values, row => row.some(h => h === 'gmv' || h === 'sku id' || h === 'id'));
   const headers = values[hi].map(h => String(h||'').trim().toLowerCase());
   Logger.log('TikTok Sales headers (row ' + hi + '): ' + headers.join(' | '));
 
+  const tnum = v => toNum(String(v == null ? '' : v).replace(/[^0-9.\-]/g, ''));
   const gmvIdx = headers.findIndex(h =>
     h === 'gmv' || h.includes('revenue') || h.includes('sales amount') ||
     h.includes('total amount') || h.includes('product amount') || h.includes('order amount'));
   const ordersIdx = headers.findIndex(h =>
     h === 'orders' || h === 'sku orders' ||
     (h.includes('order') && !h.includes('cancel') && !h.includes('return') && !h.includes('amount') && !h.includes('rate')));
+  const nameIdx = headers.findIndex(h => h === 'product' || h.includes('product name'));
 
   if (gmvIdx < 0) { Logger.log('TikTok Sales: no GMV col'); return null; }
 
@@ -674,8 +701,12 @@ function parseTikTokSalesXlsx(values, ym) {
   for (let i = hi + 1; i < values.length; i++) {
     const row = values[i];
     if (!row || row[gmvIdx] === '' || row[gmvIdx] === null || row[gmvIdx] === undefined) continue;
-    totalGmv   += toNum(row[gmvIdx]);
-    if (ordersIdx >= 0) totalOrders += toNum(row[ordersIdx]);
+    if (filterJB && nameIdx >= 0) {
+      const pname = String(row[nameIdx]||'').toLowerCase();
+      if (!pname.includes('jung beauty')) continue;
+    }
+    totalGmv   += tnum(row[gmvIdx]);
+    if (ordersIdx >= 0) totalOrders += tnum(row[ordersIdx]);
   }
   return {yr:ym.yr, mo:ym.mo, sales:totalGmv, orders:totalOrders};
 }
