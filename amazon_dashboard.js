@@ -2094,7 +2094,7 @@ async function saveBackupToFolder() {
 }
 
 // ──── GOOGLE DRIVE SYNC ──────────────────────────────────────────────
-const DRIVE_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbyzxyBAmqqPNIX7IM_MN6Jj1CjRccv3N3SbbatUEYCDidz2_t4B2fhlsj-eDq3qFes7iQ/exec';
+const DRIVE_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxrX2QisSdU-nEUsCkDgfS191tong7Xef-1lCFIw2TDsSR9JNRZSJ7T5qc_KBsS_L5QmQ/exec';
 const DRIVE_SYNC_KEY      = 'jb_drive_last_sync';
 const DRIVE_FILE_MOD_KEY  = 'jb_drive_last_file_mod';
 
