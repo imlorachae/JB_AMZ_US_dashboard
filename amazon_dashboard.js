@@ -14,9 +14,10 @@ const KEYWORD_DATA={"keywords":[{"kw":"substitutes","impr":7333,"clicks":560,"sp
 ]};
 const VINE_ITEMS = [{"yr": 2026, "mo": 2, "day": 26, "adj": -2895, "desc": "Vine Review (\ubd84\ud560 1/2)", "orders_adj": -70}, {"yr": 2026, "mo": 2, "day": 27, "adj": -2895, "desc": "Vine Review (\ubd84\ud560 2/2)", "orders_adj": -70}, {"yr": 2026, "mo": 3, "day": 16, "adj": -1950, "desc": "Vine Review", "orders_adj": -30}, {"yr": 2026, "mo": 4, "day": 14, "adj": -1950, "desc": "Vine Review (eye patch)", "orders_adj": -30}, {"yr": 2026, "mo": 6, "day": 6, "adj": -800, "desc": "Tinted Watery Sunscreen SPF50+ 3in1 Vine 20ea @$40", "orders_adj": -20}];
 const SPECIAL_EVENTS = [{"yr": 2026, "mo": 5, "day_start": 6, "day_end": 17, "desc": "\uc2e0\uc6d0\uc778\uc99d \uc774\uc288", "type": "warning"}];
-const KRW_RATES = {"2026.2": 1477, "2026.3": 1477, "2026.4": 1485, "2026.5": 1508};
-const SGD_RATES = {"2026.2": 1.34, "2026.3": 1.34, "2026.4": 1.34, "2026.5": 1.35};
-const MYR_RATES = {"2026.2": 4.3, "2026.3": 4.3, "2026.4": 4.3, "2026.5": 4.3}; // USD→MYR 추정 환율 — 필요시 수정
+// 실제 월평균 환율 (ECB 기준, frankfurter.dev 일별 데이터 평균) — 6월은 月중 평균(진행중), 월말에 갱신
+const KRW_RATES = {"2026.1": 1457, "2026.2": 1448, "2026.3": 1491, "2026.4": 1481, "2026.5": 1491, "2026.6": 1526};
+const SGD_RATES = {"2026.1": 1.2802, "2026.2": 1.2669, "2026.3": 1.2796, "2026.4": 1.2756, "2026.5": 1.2756, "2026.6": 1.2837};
+const MYR_RATES = {"2026.1": 4.0268, "2026.2": 3.9124, "2026.3": 3.9528, "2026.4": 3.9710, "2026.5": 3.9511, "2026.6": 4.0294};
 
 // ──── STATE ────────────────────────────────────────────────────────
 let allData=[], byMonth={}, monthKeys=[];
@@ -92,16 +93,16 @@ function yName(y){ return isKo()?(y+'년'):String(y); }
 function ymName(yr,mo){ return isKo()?(yr+'년 '+KO_MONTH[mo]):(EN_MONTH_S[mo]+' '+yr); }
 
 // ──── CURRENCY ─────────────────────────────────────────────────────
-function getRate(yr,mo){ const k=yr+'.'+mo; if(activeCurrency==='KRW')return KRW_RATES[k]||1400; if(activeCurrency==='SGD')return SGD_RATES[k]||1.34; return 1; }
+function getRate(yr,mo){ const k=yr+'.'+mo; if(activeCurrency==='KRW')return KRW_RATES[k]||1526; if(activeCurrency==='SGD')return SGD_RATES[k]||1.28; return 1; }
 function fmtAgg(usd,kr,sgd){
-  if(activeCurrency==='KRW')return '₩'+Math.round(usd*(kr||1400)).toLocaleString('en-US');
-  if(activeCurrency==='SGD')return 'S$'+(usd*(sgd||1.34)).toFixed(0).replace(/\B(?=(\d{3})+(?!\d))/g,',');
+  if(activeCurrency==='KRW')return '₩'+Math.round(usd*(kr||1526)).toLocaleString('en-US');
+  if(activeCurrency==='SGD')return 'S$'+(usd*(sgd||1.28)).toFixed(0).replace(/\B(?=(\d{3})+(?!\d))/g,',');
   return '$'+Math.round(usd).toLocaleString('en-US');
 }
 // 소수점 2자리까지 표시하는 금액 포맷 (CPC 등 단가성 지표용)
 function fmtAgg2(usd,kr,sgd){
-  if(activeCurrency==='KRW')return '₩'+(usd*(kr||1400)).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g,',');
-  if(activeCurrency==='SGD')return 'S$'+(usd*(sgd||1.34)).toFixed(2);
+  if(activeCurrency==='KRW')return '₩'+(usd*(kr||1526)).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g,',');
+  if(activeCurrency==='SGD')return 'S$'+(usd*(sgd||1.28)).toFixed(2);
   return '$'+usd.toFixed(2);
 }
 const fmtN=n=>Math.round(n||0).toLocaleString('en-US');
@@ -137,11 +138,16 @@ function agg(rows){
       impr:a.impr+(r.impr||0), clicks:a.clicks+(r.clicks||0), adOrders:a.adOrders+(r.adOrders||0),
       sessions:a.sessions+r.sessions, rawSales:a.rawSales+r.sales, vineTotal:a.vineTotal+(r.vine_adj||0),
       kr:a.kr+(r.salesKRW>0&&r.sales>0?r.salesKRW/r.sales:0), krN:a.krN+(r.salesKRW>0&&r.sales>0?1:0),
+      lyr:r.yr, lmo:r.mo,
     };
-  },{sales:0,organic:0,adSpend:0,adSales:0,orders:0,items:0,impr:0,clicks:0,adOrders:0,sessions:0,rawSales:0,vineTotal:0,kr:0,krN:0});
+  },{sales:0,organic:0,adSpend:0,adSales:0,orders:0,items:0,impr:0,clicks:0,adOrders:0,sessions:0,rawSales:0,vineTotal:0,kr:0,krN:0,lyr:0,lmo:0});
 }
-function emptyT(){ return {sales:0,organic:0,adSpend:0,adSales:0,orders:0,items:0,impr:0,clicks:0,adOrders:0,sessions:0,rawSales:0,vineTotal:0,kr:0,krN:0}; }
-function avgRate(a){ return {krw:a.krN>0?a.kr/a.krN:1400, sgd:1.34}; }
+function emptyT(){ return {sales:0,organic:0,adSpend:0,adSales:0,orders:0,items:0,impr:0,clicks:0,adOrders:0,sessions:0,rawSales:0,vineTotal:0,kr:0,krN:0,lyr:0,lmo:0}; }
+// KRW: 마스터시트 일별 실환율(salesKRW/sales) 평균, 없으면 해당월 ECB 평균 / SGD: 해당월 ECB 평균
+function avgRate(a){
+  const k=a.lyr?a.lyr+'.'+a.lmo:'';
+  return {krw:a.krN>0?a.kr/a.krN:(KRW_RATES[k]||1526), sgd:SGD_RATES[k]||1.28};
+}
 function chg(c,p,inv){
   if(p==null||p===0||(c===0&&p===0))return{cls:'neutral',txt:'—'};
   const vv=(c-p)/Math.abs(p)*100, up=vv>=0, good=inv?!up:up;
@@ -486,16 +492,16 @@ const _ovFailed={}; // 세션 내 응답 실패 채널 (재요청 생략)
 const OV_COLORS={US:'#2563eb',MY:'#7c3aed',SG:'#0891b2',UAE:'#16a34a'};
 function _usdFrom(val,cur,yr,mo){
   const k=yr+'.'+mo;
-  if(cur==='MYR') return val/(MYR_RATES[k]||4.3);
-  if(cur==='SGD') return val/(SGD_RATES[k]||1.34);
-  if(cur==='KRW') return val/(KRW_RATES[k]||1400);
+  if(cur==='MYR') return val/(MYR_RATES[k]||4.03);
+  if(cur==='SGD') return val/(SGD_RATES[k]||1.28);
+  if(cur==='KRW') return val/(KRW_RATES[k]||1526);
   return val;
 }
 function _dispFromUsd(usd,yr,mo){
   const k=yr+'.'+mo;
-  if(activeCurrency==='KRW') return usd*(KRW_RATES[k]||1400);
-  if(activeCurrency==='SGD') return usd*(SGD_RATES[k]||1.34);
-  if(activeCurrency==='MYR') return usd*(MYR_RATES[k]||4.3);
+  if(activeCurrency==='KRW') return usd*(KRW_RATES[k]||1526);
+  if(activeCurrency==='SGD') return usd*(SGD_RATES[k]||1.28);
+  if(activeCurrency==='MYR') return usd*(MYR_RATES[k]||4.03);
   return usd;
 }
 function _ovSym(){ return activeCurrency==='KRW'?'₩':activeCurrency==='SGD'?'S$':activeCurrency==='MYR'?'RM ':'$'; }
@@ -645,7 +651,7 @@ async function renderConsolidatedOverview(){
       <tbody>${moRows}</tbody>
     </table>
   </div>
-  <div style="color:var(--muted);font-size:11px;margin-top:10px">${isKo()?'* 모든 금액은 USD 기준 통합 후 선택 통화로 환산 (MY=MYR, SG=SGD 월별 환율 적용)':'* All values consolidated in USD, then converted to the selected currency (monthly FX for MYR/SGD)'}</div>`;
+  <div style="color:var(--muted);font-size:11px;margin-top:10px">${isKo()?'* 모든 금액은 USD 기준 통합 후 선택 통화로 환산 — 실제 해당월 평균 환율 적용 (ECB 일별 환율의 월평균, 당월은 月중 평균)':'* All values consolidated in USD, then converted to the selected currency — actual monthly average FX (ECB daily rates averaged per month; current month = month-to-date)'}</div>`;
 
   // ── 스택 막대: 매출 작은 국가가 바닥, 1위가 맨 위 (순위 위로 쌓임) ──
   const ordered=[...totals].sort((a,b)=>a.sales-b.sales);
@@ -1941,7 +1947,7 @@ function renderWeeklyBanner(rate){
   if(!wp){document.getElementById('top-banner').innerHTML='';return;}
   const sym=activeCurrency==='KRW'?'₩':activeCurrency==='SGD'?'S$':'$';
   const cr=getRate(wp.prevMoYr,wp.prevMoNum);
-  const fmt=v=>activeCurrency==='USD'?sym+Math.round(v).toLocaleString():activeCurrency==='KRW'?'₩'+Math.round(v*cr).toLocaleString():'S$'+Math.round(v*1.34).toLocaleString();
+  const fmt=v=>activeCurrency==='USD'?sym+Math.round(v).toLocaleString():activeCurrency==='KRW'?'₩'+Math.round(v*cr).toLocaleString():'S$'+Math.round(v*cr).toLocaleString();
   const wEnd=new Date(wp.wSun);wEnd.setDate(wp.wSun.getDate()+6);
   const wLabel=`${wp.wSun.getMonth()+1}/${wp.wSun.getDate()}~${wEnd.getMonth()+1}/${wEnd.getDate()}`;
   const metaKo=`직전달 일평균 ${fmt(wp.prevDailyAvg)} · 최근3주 ${fmt(wp.last21Avg)} · 요일패턴 반영`;
@@ -1968,9 +1974,9 @@ function chartOpts(){return{responsive:true,maintainAspectRatio:false,animation:
   },
   scales:{x:{ticks:{color:'#64748b',font:{size:9},maxRotation:45},grid:{color:'#f1f5f9'}},y:{ticks:{color:'#64748b',callback:v=>{const sym=activeCurrency==='KRW'?'₩':activeCurrency==='SGD'?'S$':'$';if(v===0)return sym+'0';return Math.abs(v)>=1000?sym+Math.round(v/1000)+'k':sym+Math.round(v);}},grid:{color:'#e2e8f0'}}}
 };}
-// aggregate-based trend (currency-converted via avg rate of each bucket)
+// aggregate-based trend (currency-converted via monthly avg rate of each bucket)
 function renderTrendChart(labels,buckets,title,overrideSales,highlightIdx){
-  const r=v=>activeCurrency==='USD'?v:(activeCurrency==='KRW'?v*1490:v*1.34);
+  const r=(v,i)=>{const b=buckets[i]||{};return v*(b.lyr?getRate(b.lyr,b.lmo):getRate(2026,6));};
   const salesD=(overrideSales||buckets.map(t=>t.sales)).map(r);
   const adD=buckets.map(t=>t.adSales).map(r);
   const orgD=buckets.map(t=>t.organic).map(r);
@@ -2852,7 +2858,7 @@ function renderCampaigns(){
   const acosOf=c=>c.sales>0?c.spend/c.sales*100:0;
   const cpcOf=c=>c.clicks>0?c.spend/c.clicks:0;
   const ctrOf=c=>(c.impr&&c.impr>0)?c.clicks/c.impr*100:0;
-  const cpcFmt=v=>{if(activeCurrency==='KRW')return '₩'+(v*rate.krw).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g,',');if(activeCurrency==='SGD')return 'S$'+(v*(rate.sgd||1.34)).toFixed(2);return '$'+v.toFixed(2);};
+  const cpcFmt=v=>{if(activeCurrency==='KRW')return '₩'+(v*rate.krw).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g,',');if(activeCurrency==='SGD')return 'S$'+(v*(rate.sgd||1.28)).toFixed(2);return '$'+v.toFixed(2);};
   // 캠페인 탭도 Overview와 동일한 기간 선택 UI 제공
   const {from:campFrom,to:campTo,rows:campRangeRows}=buildAdsBuckets();
   // KEYWORD_DATA.campaigns는 누적(전체기간) 데이터라 날짜별 분해가 불가능 →
@@ -2985,7 +2991,7 @@ function renderAdGroups(){
   _renderStatChips();
   _renderStatChart(groups.map(g=>g.name.length>16?g.name.slice(0,16)+'…':g.name),groups,isKo()?'📊 광고그룹별 성과':'📊 Ad Group Performance',20);
   const grpHead='<thead><tr><th style="text-align:left">'+(isKo()?'그룹명':'Group')+'</th><th>'+(isKo()?'타입':'Type')+'</th><th>'+(isKo()?'광고비':'Spend')+'</th><th>'+(isKo()?'매출':'Sales')+'</th><th>ROAS</th><th>ACoS</th><th>CPC</th><th>'+(isKo()?'클릭':'Clk')+'</th><th>'+(isKo()?'노출':'Impr')+'</th><th>'+(isKo()?'주문':'Ord')+'</th><th>'+(isKo()?'포함 캠페인':'Campaigns')+'</th></tr></thead>';
-  const cpcFmtG=v=>{if(activeCurrency==='KRW')return '₩'+(v*rate.krw).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g,',');if(activeCurrency==='SGD')return 'S$'+(v*(rate.sgd||1.34)).toFixed(2);return '$'+v.toFixed(2);};
+  const cpcFmtG=v=>{if(activeCurrency==='KRW')return '₩'+(v*rate.krw).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g,',');if(activeCurrency==='SGD')return 'S$'+(v*(rate.sgd||1.28)).toFixed(2);return '$'+v.toFixed(2);};
   const grpRow=(g,i)=>'<tr><td style="text-align:left;font-weight:600"><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:'+COLORS[i%7]+';margin-right:6px"></span>'+g.name+'</td><td><span style="font-size:10px;padding:2px 6px;border-radius:4px;background:var(--card2);color:var(--muted)">'+g.type+'</span></td><td>'+money(g.spend)+'</td><td>'+money(g.sales)+'</td><td class="'+(roasOf(g)>=100?'pos':'neg')+'">'+Math.round(roasOf(g))+'%</td><td>'+(acosOf(g)>0?Math.round(acosOf(g)):'-')+'</td><td>'+cpcFmtG(cpcOf(g))+'</td><td>'+g.clicks.toLocaleString()+'</td><td>'+g.impr.toLocaleString()+'</td><td>'+g.orders+'</td><td style="font-size:10px;color:var(--muted);text-align:left">'+g.campaigns.join(', ')+'</td></tr>';
   document.getElementById('summary-section').innerHTML=
     '<div class="section-title">📦 '+(isKo()?'광고그룹 상세 (제품군 × 타겟팅 방식)':'Ad Group Detail (product × targeting)')+'</div>'+
@@ -3000,7 +3006,7 @@ function _kwCommon(){
   const acosOf=k=>k.sales>0?k.spend/k.sales*100:0;
   const cpcOf=k=>k.clicks>0?k.spend/k.clicks:0;
   const ctrOf=k=>(k.impr&&k.impr>0)?k.clicks/k.impr*100:0;
-  const cpcFmt=v=>{if(activeCurrency==='KRW')return '₩'+(v*rate.krw).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g,',');if(activeCurrency==='SGD')return 'S$'+(v*(rate.sgd||1.34)).toFixed(2);return '$'+v.toFixed(2);};
+  const cpcFmt=v=>{if(activeCurrency==='KRW')return '₩'+(v*rate.krw).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g,',');if(activeCurrency==='SGD')return 'S$'+(v*(rate.sgd||1.28)).toFixed(2);return '$'+v.toFixed(2);};
   const asinRe=/asin-expanded="([A-Z0-9]+)"/i;
   const kwDisplay=kw=>{const m=kw.match(asinRe);if(m)return '<a href="https://www.amazon.com/dp/'+m[1]+'" target="_blank" style="color:#3b82f6;text-decoration:none;font-size:11px">🔗 '+m[1]+'</a>';if(kw.startsWith('keyword-group='))return '<span style="color:#94a3b8;font-size:10px">'+kw+'</span>';return kw;};
   const isBrand=k=>/jung/i.test(k.kw);
