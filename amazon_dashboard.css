@@ -47,6 +47,9 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,"Segoe UI"
 .sidebar-channel{display:flex;align-items:center;padding:6px 12px 6px 30px;border-radius:6px;border:none;background:transparent;color:var(--muted);font-size:12px;text-align:left;cursor:pointer;width:100%;transition:background .12s,color .12s}
 .sidebar-channel:hover{background:var(--card2);color:var(--text)}
 .sidebar-channel.active{background:var(--accent);color:#fff;font-weight:600}
+.sidebar-mode{display:flex;align-items:center;gap:8px;padding:6px 12px 6px 38px;border-radius:6px;border:none;background:transparent;color:var(--muted);font-size:12px;text-align:left;cursor:pointer;width:100%;transition:background .12s,color .12s}
+.sidebar-mode:hover{background:var(--card2);color:var(--text)}
+.sidebar-mode.active{color:var(--accent);font-weight:600}
 @media (max-width:900px){
   #dashboard{flex-direction:column}
   .sidebar{position:relative;width:100%;flex:0 0 auto;height:auto;flex-direction:row;overflow-x:auto;border-right:none;border-bottom:1px solid var(--border)}

@@ -453,20 +453,29 @@ function renderSidebar(){
     const isActive=c===activeCountry;
     const isExp=sidebarExpanded[c];
     const chs=COUNTRY_CHANNELS[c]||[];
-    const chItems=isExp?chs.map(ch=>{
-      const chActive=isActive&&ch.id===activeChannel;
-      return `<button class="sidebar-channel${chActive?' active':''}" onclick="setCountryChannel('${c}','${ch.id}')">${ch.label}</button>`;
-    }).join(''):'';
+    let chItems='';
+    if(isExp){
+      chItems=chs.map(ch=>{
+        const chActive=isActive&&ch.id===activeChannel;
+        let modeItems='';
+        if(chActive){
+          modeItems=
+            `<button class="sidebar-mode${appMode==='sales'?' active':''}" onclick="setMode('sales')">💰 <span>${isKo()?'매출':'Sales'}</span></button>`+
+            `<button class="sidebar-mode${appMode==='ads'?' active':''}" onclick="setMode('ads')">📢 <span>${isKo()?'광고':'Ads'}</span></button>`;
+        }
+        return `<button class="sidebar-channel${chActive?' active':''}" onclick="setCountryChannel('${c}','${ch.id}')">${ch.label}</button>${modeItems}`;
+      }).join('');
+    }
     return `<button class="sidebar-country${isActive?' active':''}${isExp?' expanded':''}" onclick="toggleCountry('${c}')"><span>${COUNTRY_FLAGS[c]}</span><span class="sc-name">${c}</span><span class="sc-arrow">${isExp?'▾':'▸'}</span></button>${chItems}`;
   }).join('');
-  const modes=SIDEBAR_ITEMS.map(([m,ic,lb])=>
-    `<button class="sidebar-btn ${m===appMode?'active':''}" onclick="setMode('${m}')"><span class="ic">${ic}</span><span>${lb()}</span></button>`).join('');
   sb.innerHTML=
     '<div class="sidebar-logo">📊 JungBeauty</div>'+
+    `<button class="sidebar-btn${appMode==='consolidated'?' active':''}" onclick="setMode('consolidated')"><span class="ic">🌍</span><span>${isKo()?'오버뷰':'Overview'}</span></button>`+
+    '<div class="sidebar-divider"></div>'+
     '<div class="sidebar-section-lbl">'+(isKo()?'국가 · 채널':'Country · Channel')+'</div>'+
     tree+
     '<div class="sidebar-divider"></div>'+
-    modes+
+    `<button class="sidebar-btn${appMode==='settings'?' active':''}" onclick="setMode('settings')"><span class="ic">⚙️</span><span>${isKo()?'설정':'Settings'}</span></button>`+
     '<div class="sidebar-spacer"></div>'+
     `<div class="sidebar-foot">${COUNTRY_FLAGS[activeCountry]} ${activeCountry} · ${CHANNEL_LABELS[activeChannel]||activeChannel}</div>`;
 }
@@ -2996,6 +3005,7 @@ function toggleCountry(country) {
 
 function setCountryChannel(country, channel) {
   activeCountry=country; activeChannel=channel;
+  if(appMode==='consolidated'||appMode==='settings') appMode='sales';
   Object.keys(sidebarExpanded).forEach(c => sidebarExpanded[c]=false);
   sidebarExpanded[country]=true;
   applyI18nStatic();
