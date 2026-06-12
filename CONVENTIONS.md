@@ -164,6 +164,14 @@
   - `applyI18nStatic()`에서 `appMode==='sales'`일 때만 display 활성화
   - **이 show/hide 로직을 다른 render 함수에 추가하거나 vine-group을 전체 노출로 되돌리지 않도록 주의**
 
+### 7-5. 스토어 대시보드 — store_dashboard.html (2026-06-13 추가)
+- US Amazon Brand Store 인사이트 페이지 (단독 html, 데이터는 파일 내 하드코딩 — Drive 동기화 아님)
+- **amazon_dashboard.css를 직접 `<link>`** 해서 세일즈 대시보드와 디자인 단일 소스 유지 — 페이지 전용 스타일(소스바, bottom-grid 등)만 인라인 `<style>` 오버라이드. 디자인 변경은 amazon_dashboard.css에서 하면 두 페이지에 동시 반영
+- 레이아웃 셸 동일: 사이드바(국가·채널 트리, 🛍 스토어 모드 active) + topbar 1줄(규칙 7-4 준수) + status-bar + content
+- **사이드바 상호 링크**: 세일즈 `renderSidebar()`는 US/AMZ 채널에서만 🛍 스토어 버튼 노출 → `store_dashboard.html` 이동. 스토어 쪽 매출/광고/오버뷰/설정 버튼 → `amazon_dashboard.html` 복귀
+- 컴포넌트 재사용: KPI는 `kpi-grid5`(5칸, 검정 값), 인사이트는 `ratio-grid`(가운데 정렬, 파란 값)
+- 페이지별 CVR = 주문 ÷ 방문 (2026-06-13 수정: 이전엔 매출÷방문으로 잘못 계산)
+
 ---
 
 ## 8. 다국가 지원 — Drive 폴더 ID 맵 (2026-06-11 추가)

@@ -469,6 +469,8 @@ function renderSidebar(){
           modeItems=
             `<button class="sidebar-mode${appMode==='sales'?' active':''}" onclick="setMode('sales')">💰 <span>${isKo()?'매출':'Sales'}</span></button>`+
             `<button class="sidebar-mode${appMode==='ads'?' active':''}" onclick="setMode('ads')">📢 <span>${isKo()?'광고':'Ads'}</span></button>`;
+          if(c==='US'&&ch.id==='AMZ')
+            modeItems+=`<button class="sidebar-mode" onclick="location.href='store_dashboard.html'">🛍 <span>${isKo()?'스토어':'Store'}</span></button>`;
         }
         return `<button class="sidebar-channel${chActive?' active':''}" onclick="setCountryChannel('${c}','${ch.id}')">${ch.label}</button>${modeItems}`;
       }).join('');
