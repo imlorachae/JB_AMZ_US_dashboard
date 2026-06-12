@@ -16,6 +16,7 @@ const VINE_ITEMS = [{"yr": 2026, "mo": 2, "day": 26, "adj": -2895, "desc": "Vine
 const SPECIAL_EVENTS = [{"yr": 2026, "mo": 5, "day_start": 6, "day_end": 17, "desc": "\uc2e0\uc6d0\uc778\uc99d \uc774\uc288", "type": "warning"}];
 const KRW_RATES = {"2026.2": 1477, "2026.3": 1477, "2026.4": 1485, "2026.5": 1508};
 const SGD_RATES = {"2026.2": 1.34, "2026.3": 1.34, "2026.4": 1.34, "2026.5": 1.35};
+const MYR_RATES = {"2026.2": 4.3, "2026.3": 4.3, "2026.4": 4.3, "2026.5": 4.3}; // USD→MYR 추정 환율 — 필요시 수정
 
 // ──── STATE ────────────────────────────────────────────────────────
 let allData=[], byMonth={}, monthKeys=[];
@@ -479,13 +480,217 @@ function renderSidebar(){
     '<div class="sidebar-spacer"></div>'+
     `<div class="sidebar-foot">${COUNTRY_FLAGS[activeCountry]} ${activeCountry} · ${CHANNEL_LABELS[activeChannel]||activeChannel}</div>`;
 }
-function renderConsolidatedPlaceholder(){
+// ──── CONSOLIDATED OVERVIEW (전 국가 통합 대시보드) ────────────────
+let ovBarCI=null, ovDonutCI=null, _ovToken=0;
+const _ovFailed={}; // 세션 내 응답 실패 채널 (재요청 생략)
+const OV_COLORS={US:'#2563eb',MY:'#7c3aed',SG:'#0891b2',UAE:'#16a34a'};
+function _usdFrom(val,cur,yr,mo){
+  const k=yr+'.'+mo;
+  if(cur==='MYR') return val/(MYR_RATES[k]||4.3);
+  if(cur==='SGD') return val/(SGD_RATES[k]||1.34);
+  if(cur==='KRW') return val/(KRW_RATES[k]||1400);
+  return val;
+}
+function _dispFromUsd(usd,yr,mo){
+  const k=yr+'.'+mo;
+  if(activeCurrency==='KRW') return usd*(KRW_RATES[k]||1400);
+  if(activeCurrency==='SGD') return usd*(SGD_RATES[k]||1.34);
+  if(activeCurrency==='MYR') return usd*(MYR_RATES[k]||4.3);
+  return usd;
+}
+function _ovSym(){ return activeCurrency==='KRW'?'₩':activeCurrency==='SGD'?'S$':activeCurrency==='MYR'?'RM ':'$'; }
+function _ovFmt(v){ return _ovSym()+Math.round(v||0).toLocaleString('en-US'); }
+
+async function renderConsolidatedOverview(){
   const el=document.getElementById('overview-section');
   if(!el) return;
-  el.innerHTML=`<div class="section-title">📊 ${isKo()?'종합 대시보드':'Consolidated Overview'}</div>
-  <div style="background:var(--card);border:1px solid var(--border);border-radius:12px;padding:40px 24px;text-align:center;color:var(--muted);font-size:13px">
-    ${isKo()?'국가·판매채널 확장에 맞춰 통합 뷰가 이곳에 추가될 예정입니다.<br>(US/UAE, 다른 채널 데이터 연동 후 구성)':'A consolidated cross-country / cross-channel view will be added here as the dashboard expands to US/UAE and other sales channels.'}
-  </div>`;
+  const tok=++_ovToken;
+  if(ovBarCI){ovBarCI.destroy();ovBarCI=null;}
+  if(ovDonutCI){ovDonutCI.destroy();ovDonutCI=null;}
+  el.innerHTML=`<div class="section-title">🌍 ${isKo()?'정뷰티 글로벌 오버뷰':'JungBeauty Global Overview'}</div>
+  <div style="color:var(--muted);font-size:13px;padding:24px 4px">⏳ ${isKo()?'국가별 데이터 불러오는 중…':'Loading country data…'}</div>`;
+
+  // 비-US 국가 채널 데이터 병렬 로드 (mysgCache 재사용 → 재방문 시 즉시)
+  // 실패한 채널은 세션 내 재요청 생략 (UAE 등 미연동 채널의 반복 fetch 방지)
+  const jobs=[];
+  Object.keys(COUNTRY_CHANNELS).forEach(c=>{
+    if(c==='US') return;
+    (COUNTRY_CHANNELS[c]||[]).forEach(ch=>{
+      const fk=c+'_'+ch.id;
+      if(_ovFailed[fk]) return;
+      jobs.push(syncCountryData(c,ch.id).then(r=>{ if(!r) _ovFailed[fk]=true; return {c,r}; }));
+    });
+  });
+  const results=await Promise.all(jobs);
+  if(tok!==_ovToken||appMode!=='consolidated') return; // 모드 이탈/재호출 시 중단
+
+  // ── USD 기준 국가×월 집계 ──
+  const agg={};
+  const touch=(c,yr,mo)=>{const k=yr+'.'+mo;agg[c]=agg[c]||{};agg[c][k]=agg[c][k]||{yr,mo,sales:0,adSpend:0,orders:0};return agg[c][k];};
+  allData.forEach(r=>{
+    const o=touch('US',r.yr,r.mo);
+    o.sales+=(r.sales||0)+(vineMode==='exclude'?(r.vine_adj||0):0);
+    o.adSpend+=r.adSpend||0; o.orders+=r.orders||0;
+  });
+  results.forEach(({c,r})=>{
+    if(!r||!r.data) return;
+    r.data.forEach(d=>{
+      const o=touch(c,d.yr,d.mo);
+      o.sales+=_usdFrom(d.sales||0,r.currency,d.yr,d.mo);
+      o.adSpend+=_usdFrom(d.adSpend||0,r.currency,d.yr,d.mo);
+      o.orders+=d.orders||0;
+    });
+  });
+
+  const countries=Object.keys(agg);
+  // 월 라벨 합집합 (시간순)
+  const ymSet={};
+  countries.forEach(c=>Object.values(agg[c]).forEach(o=>{ymSet[o.yr+'.'+o.mo]={yr:o.yr,mo:o.mo};}));
+  const yms=Object.values(ymSet).sort((a,b)=>a.yr-b.yr||a.mo-b.mo);
+
+  // 국가별 합계(USD) → 매출 순위 (내림차순)
+  const totals=countries.map(c=>{
+    let s=0,a=0,o=0;
+    Object.values(agg[c]).forEach(v=>{s+=v.sales;a+=v.adSpend;o+=v.orders;});
+    return {c,sales:s,adSpend:a,orders:o};
+  }).sort((x,y)=>y.sales-x.sales);
+  const grandSalesUSD=totals.reduce((s,t)=>s+t.sales,0);
+  const grandSpendUSD=totals.reduce((s,t)=>s+t.adSpend,0);
+  const grandOrders=totals.reduce((s,t)=>s+t.orders,0);
+  const dispByCountry=(c,fld)=>Object.values(agg[c]).reduce((s,v)=>s+_dispFromUsd(v[fld],v.yr,v.mo),0);
+  const dispSales=countries.reduce((s,c)=>s+dispByCountry(c,'sales'),0);
+  const dispSpend=countries.reduce((s,c)=>s+dispByCountry(c,'adSpend'),0);
+  const roas=grandSpendUSD>0?grandSalesUSD/grandSpendUSD:0;
+  const acos=grandSalesUSD>0?grandSpendUSD/grandSalesUSD*100:0;
+  const spendCountries=totals.filter(t=>t.adSpend>0).map(t=>t.c).join(' + ')||'—';
+
+  const kpis=[
+    {l:isKo()?'총 매출 (전 국가)':'Total Sales (All)',v:_ovFmt(dispSales),s:countries.length+(isKo()?'개국 합산':' countries')},
+    {l:isKo()?'총 광고비':'Total Ad Spend',v:_ovFmt(dispSpend),s:spendCountries},
+    {l:'Total ROAS',v:(roas*100).toFixed(0)+'%',s:isKo()?'총매출÷광고비':'Sales ÷ Spend'},
+    {l:'Total ACoS',v:acos.toFixed(0),s:isKo()?'광고비÷총매출':'Spend ÷ Sales'},
+    {l:isKo()?'총 주문수':'Total Orders',v:fmtN(grandOrders),s:isKo()?'건':'orders'},
+  ];
+
+  // 순위 테이블 rows
+  const rankRows=totals.map((t,i)=>{
+    const share=grandSalesUSD>0?t.sales/grandSalesUSD*100:0;
+    const cRoas=t.adSpend>0?(t.sales/t.adSpend*100).toFixed(0)+'%':'—';
+    const chs=(COUNTRY_CHANNELS[t.c]||[]).map(ch=>ch.label).join(', ');
+    return `<tr style="border-bottom:1px solid var(--border)">
+      <td style="padding:8px 12px;font-weight:700;color:${i===0?'var(--accent)':'var(--text)'}">${i+1}</td>
+      <td style="padding:8px 12px">${COUNTRY_FLAGS[t.c]} <b>${t.c}</b> <span style="color:var(--muted);font-size:11px">${COUNTRY_NAMES[t.c]||''}</span></td>
+      <td style="padding:8px 12px;color:var(--muted);font-size:11px">${chs}</td>
+      <td style="text-align:right;padding:8px 12px;font-weight:600">${_ovFmt(dispByCountry(t.c,'sales'))}</td>
+      <td style="text-align:right;padding:8px 12px">${share.toFixed(1)}%</td>
+      <td style="text-align:right;padding:8px 12px">${_ovFmt(dispByCountry(t.c,'adSpend'))}</td>
+      <td style="text-align:right;padding:8px 12px">${cRoas}</td>
+      <td style="text-align:right;padding:8px 12px">${fmtN(t.orders)}</td>
+    </tr>`;
+  }).join('');
+
+  // 월별 상세 rows (국가 순위 순 컬럼)
+  const moHead=totals.map(t=>`<th style="text-align:right;padding:8px 12px;color:var(--muted);font-weight:600">${COUNTRY_FLAGS[t.c]} ${t.c}</th>`).join('');
+  const moRows=yms.map(m=>{
+    const cells=totals.map(t=>{
+      const v=agg[t.c][m.yr+'.'+m.mo];
+      return `<td style="text-align:right;padding:8px 12px">${v?_ovFmt(_dispFromUsd(v.sales,m.yr,m.mo)):'—'}</td>`;
+    }).join('');
+    const rowTot=totals.reduce((s,t)=>{const v=agg[t.c][m.yr+'.'+m.mo];return s+(v?_dispFromUsd(v.sales,m.yr,m.mo):0);},0);
+    return `<tr style="border-bottom:1px solid var(--border)">
+      <td style="padding:8px 12px">${m.yr} ${mNameS(m.mo)}</td>${cells}
+      <td style="text-align:right;padding:8px 12px;font-weight:700">${_ovFmt(rowTot)}</td>
+    </tr>`;
+  }).join('');
+
+  el.innerHTML=`
+  <div class="section-title">🌍 ${isKo()?'정뷰티 글로벌 오버뷰':'JungBeauty Global Overview'}</div>
+  <div class="kpi-grid5" style="margin-bottom:14px">
+    ${kpis.map(k=>`<div class="kpi-card"><div class="kpi-lbl">${k.l}</div><div class="kpi-val">${k.v}</div><div style="color:var(--muted);font-size:11px;margin-top:2px">${k.s}</div></div>`).join('')}
+  </div>
+  <div class="ov-grid">
+    <div class="chart-card">
+      <div class="chart-header"><div class="chart-title">📊 ${isKo()?'월별 매출 — 국가별 비중 (순위순 스택)':'Monthly Sales by Country (stacked by rank)'}</div></div>
+      <div style="position:relative;height:360px"><canvas id="ovStack"></canvas></div>
+    </div>
+    <div class="chart-card">
+      <div class="chart-header"><div class="chart-title">🥧 ${isKo()?'국가별 매출 비중':'Sales Share by Country'}</div></div>
+      <div style="position:relative;height:360px"><canvas id="ovDonut"></canvas></div>
+    </div>
+  </div>
+  <div class="section-title" style="margin-top:20px">🏆 ${isKo()?'국가별 매출 순위':'Country Ranking'}</div>
+  <div style="overflow-x:auto;background:var(--card);border:1px solid var(--border);border-radius:12px;padding:4px 0">
+    <table style="width:100%;border-collapse:collapse;font-size:13px">
+      <thead><tr style="border-bottom:2px solid var(--border)">
+        <th style="text-align:left;padding:8px 12px;color:var(--muted);font-weight:600">${isKo()?'순위':'Rank'}</th>
+        <th style="text-align:left;padding:8px 12px;color:var(--muted);font-weight:600">${isKo()?'국가':'Country'}</th>
+        <th style="text-align:left;padding:8px 12px;color:var(--muted);font-weight:600">${isKo()?'채널':'Channels'}</th>
+        <th style="text-align:right;padding:8px 12px;color:var(--muted);font-weight:600">${isKo()?'매출':'Sales'}</th>
+        <th style="text-align:right;padding:8px 12px;color:var(--muted);font-weight:600">${isKo()?'비중':'Share'}</th>
+        <th style="text-align:right;padding:8px 12px;color:var(--muted);font-weight:600">${isKo()?'광고비':'Ad Spend'}</th>
+        <th style="text-align:right;padding:8px 12px;color:var(--muted);font-weight:600">ROAS</th>
+        <th style="text-align:right;padding:8px 12px;color:var(--muted);font-weight:600">${isKo()?'주문수':'Orders'}</th>
+      </tr></thead>
+      <tbody>${rankRows}</tbody>
+    </table>
+  </div>
+  <div class="section-title" style="margin-top:20px">📅 ${isKo()?'월별 국가 매출 상세':'Monthly Sales by Country'}</div>
+  <div style="overflow-x:auto;background:var(--card);border:1px solid var(--border);border-radius:12px;padding:4px 0">
+    <table style="width:100%;border-collapse:collapse;font-size:13px">
+      <thead><tr style="border-bottom:2px solid var(--border)">
+        <th style="text-align:left;padding:8px 12px;color:var(--muted);font-weight:600">${isKo()?'월':'Month'}</th>
+        ${moHead}
+        <th style="text-align:right;padding:8px 12px;color:var(--muted);font-weight:600">${isKo()?'합계':'Total'}</th>
+      </tr></thead>
+      <tbody>${moRows}</tbody>
+    </table>
+  </div>
+  <div style="color:var(--muted);font-size:11px;margin-top:10px">${isKo()?'* 모든 금액은 USD 기준 통합 후 선택 통화로 환산 (MY=MYR, SG=SGD 월별 환율 적용)':'* All values consolidated in USD, then converted to the selected currency (monthly FX for MYR/SGD)'}</div>`;
+
+  // ── 스택 막대: 매출 작은 국가가 바닥, 1위가 맨 위 (순위 위로 쌓임) ──
+  const ordered=[...totals].sort((a,b)=>a.sales-b.sales);
+  const dsets=ordered.map(t=>({
+    label:`${COUNTRY_FLAGS[t.c]} ${t.c}`,
+    data:yms.map(m=>{const v=agg[t.c][m.yr+'.'+m.mo];return v?Math.round(_dispFromUsd(v.sales,m.yr,m.mo)):0;}),
+    backgroundColor:OV_COLORS[t.c]||'#94a3b8',
+    borderRadius:3,
+  }));
+  ovBarCI=new Chart(document.getElementById('ovStack').getContext('2d'),{
+    type:'bar',
+    data:{labels:yms.map(m=>mNameS(m.mo)),datasets:dsets},
+    options:{responsive:true,maintainAspectRatio:false,
+      plugins:{
+        legend:{position:'top',reverse:true,labels:{color:'#64748b',font:{size:11},boxWidth:14}},
+        tooltip:{callbacks:{label:ctx=>{
+          const tot=ctx.chart.data.datasets.reduce((s,ds)=>s+(ds.data[ctx.dataIndex]||0),0);
+          const v=ctx.parsed.y||0;
+          return `${ctx.dataset.label}: ${_ovFmt(v)} (${tot>0?(v/tot*100).toFixed(1):'0.0'}%)`;
+        }}}
+      },
+      scales:{
+        x:{stacked:true,ticks:{color:'#64748b'},grid:{color:'#f1f5f9'}},
+        y:{stacked:true,ticks:{color:'#64748b',callback:v=>Math.abs(v)>=1000?_ovSym()+Math.round(v/1000)+'k':_ovSym()+v},grid:{color:'#e2e8f0'}}
+      }
+    }
+  });
+
+  // ── 도넛: 국가별 매출 비중 (순위순) ──
+  ovDonutCI=new Chart(document.getElementById('ovDonut').getContext('2d'),{
+    type:'doughnut',
+    data:{
+      labels:totals.map(t=>`${COUNTRY_FLAGS[t.c]} ${t.c}`),
+      datasets:[{data:totals.map(t=>Math.round(dispByCountry(t.c,'sales'))),backgroundColor:totals.map(t=>OV_COLORS[t.c]||'#94a3b8'),borderWidth:0}]
+    },
+    options:{responsive:true,maintainAspectRatio:false,cutout:'58%',
+      plugins:{
+        legend:{position:'bottom',labels:{color:'#64748b',font:{size:11},boxWidth:14}},
+        tooltip:{callbacks:{label:ctx=>{
+          const tot=ctx.dataset.data.reduce((s,v)=>s+v,0);
+          return `${ctx.label}: ${_ovFmt(ctx.parsed)} (${tot>0?(ctx.parsed/tot*100).toFixed(1):'0.0'}%)`;
+        }}}
+      }
+    }
+  });
 }
 function renderSettingsPlaceholder(){
   const el=document.getElementById('settings-section');
@@ -915,16 +1120,16 @@ function _hideAllSections(except){
   });
 }
 function render(){
-  if(activeCountry!=='US'){ renderMysg(); return; }
   const nav=document.querySelector('.navbar');
   if(appMode==='consolidated'||appMode==='settings'){
     if(nav) nav.style.display='none';
     const tg=document.getElementById('tab-group'); if(tg) tg.innerHTML='';
     const tb=document.getElementById('topbar-badge'); if(tb) tb.textContent=appMode==='consolidated'?(isKo()?'종합 대시보드':'Overview'):(isKo()?'설정':'Settings');
-    if(appMode==='consolidated'){ _hideAllSections('overview-section'); renderConsolidatedPlaceholder(); }
+    if(appMode==='consolidated'){ _hideAllSections('overview-section'); renderConsolidatedOverview(); }
     else { _hideAllSections('settings-section'); renderSettingsPlaceholder(); }
     return;
   }
+  if(activeCountry!=='US'){ renderMysg(mysgCache[activeCountry+'_'+activeChannel]); return; }
   // 매출/광고 모드 진입 시 placeholder 섹션 숨김 + 정상 섹션 복원
   ['overview-section','settings-section'].forEach(id=>{const el=document.getElementById(id); if(el) el.style.display='none';});
   ['review-section','top-banner','kpi-row1','ratio-grid','charts-grid','summary-section'].forEach(id=>{const el=document.getElementById(id); if(el) el.style.display='';});
