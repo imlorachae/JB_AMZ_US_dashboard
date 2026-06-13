@@ -2497,8 +2497,8 @@ const ADS_METRICS={
   totalSales:{ko:'총매출',en:'Total Sales',c:t=>t.sales, f:'money'},
   roas:{ko:'ROAS',en:'ROAS',c:t=>t.adSpend>0?t.adSales/t.adSpend*100:0, f:'pct'},
   acos:{ko:'ACoS',en:'ACoS',c:t=>t.adSales>0?t.adSpend/t.adSales*100:0, f:'num'},
-  troas:{ko:'Total ROAS',en:'Total ROAS',c:t=>t.adSpend>0?t.sales/t.adSpend*100:0, f:'pct'},
-  tacos:{ko:'TACoS',en:'TACoS',c:t=>t.sales>0?t.adSpend/t.sales*100:0, f:'num'},
+  troas:{ko:'Total ROAS',en:'Total ROAS',c:t=>t.sales===0&&t.adSales>0?null:(t.adSpend>0?t.sales/t.adSpend*100:0), f:'pct'},
+  tacos:{ko:'TACoS',en:'TACoS',c:t=>t.sales===0&&t.adSales>0?null:(t.sales>0?t.adSpend/t.sales*100:0), f:'num'},
   impr:{ko:'노출',en:'Impressions',c:t=>t.impr||0, f:'int'},
   cpm:{ko:'CPM',en:'CPM',c:t=>t.impr>0?t.adSpend/t.impr*1000:0, f:'money'},
   clicks:{ko:'클릭',en:'Clicks',c:t=>t.clicks||0, f:'int'},
@@ -2511,6 +2511,7 @@ const ADS_METRICS={
 const ADS_ORDER=['adSpend','adSales','organic','roas','acos','troas','tacos','impr','ctr','clicks','cvr','adOrders','cpc','cpa','cpm'];
 function mLabel(k){return isKo()?ADS_METRICS[k].ko:ADS_METRICS[k].en;}
 function fmtMetric(k,v,rate){const m=ADS_METRICS[k];
+  if(v===null||v===undefined)return '—';
   if(m.f==='money')return fmtAgg(v,rate.krw,rate.sgd);
   if(m.f==='money2')return fmtAgg2(v,rate.krw,rate.sgd);
   if(m.f==='pct')return Math.round(v)+'%';
