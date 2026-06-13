@@ -43,21 +43,7 @@
 <body>
 
 <div id="dashboard">
-  <div class="sidebar">
-    <div class="sidebar-logo">📊 JungBeauty</div>
-    <button class="sidebar-btn" onclick="location.href='amazon_dashboard.html'"><span class="ic">🌍</span><span>오버뷰</span></button>
-    <div class="sidebar-divider"></div>
-    <div class="sidebar-section-lbl">국가 · 채널</div>
-    <button class="sidebar-country active expanded"><span>🇺🇸</span><span class="sc-name">US</span><span class="sc-arrow">▾</span></button>
-    <button class="sidebar-channel active">Amazon</button>
-    <button class="sidebar-mode" onclick="location.href='amazon_dashboard.html'">💰 <span>매출</span></button>
-    <button class="sidebar-mode" onclick="location.href='amazon_dashboard.html'">📢 <span>광고</span></button>
-    <button class="sidebar-mode active">🛍 <span>스토어</span></button>
-    <div class="sidebar-divider"></div>
-    <button class="sidebar-btn" onclick="location.href='amazon_dashboard.html'"><span class="ic">⚙️</span><span>설정</span></button>
-    <div class="sidebar-spacer"></div>
-    <div class="sidebar-foot">🇺🇸 US · Amazon</div>
-  </div>
+  <div class="sidebar" id="sidebar"></div>
   <div class="main-area">
 
   <div class="topbar">
@@ -65,22 +51,31 @@
       <span class="topbar-logo">🛍 JungBeauty Store</span>
       <span class="topbar-badge">Amazon US</span>
     </div>
-    <div class="topbar-right">
-      <div class="tab-group">
-        <button class="tab-btn active" onclick="setMonth('all')">전체</button>
-        <button class="tab-btn" onclick="setMonth('2026-03')">3월</button>
-        <button class="tab-btn" onclick="setMonth('2026-04')">4월</button>
-        <button class="tab-btn" onclick="setMonth('2026-05')">5월</button>
-      </div>
-    </div>
+    <div class="topbar-right"></div>
   </div>
 
-  <div id="status-bar">데이터 기간: 2026.03.12 ~ 2026.05.31 · Amazon Brand Store 인사이트</div>
+  <div id="status-bar"></div>
 
   <div class="content">
+    <!-- NAVBAR — 날짜·기간 선택은 데이터 영역 상단에 배치 (규칙 7-6) -->
+    <div class="navbar">
+      <div class="navbar-left">
+        <div class="year-tabs"><button class="year-tab active">2026</button></div>
+        <div class="unit-tabs" id="unit-tabs"></div>
+      </div>
+      <div class="navbar-right">
+        <label id="rng-lbl"></label>
+        <input type="date" id="rng-from" min="2026-03-12" max="2026-05-31">
+        <span style="color:var(--muted);font-size:11px">~</span>
+        <input type="date" id="rng-to" min="2026-03-12" max="2026-05-31">
+        <button class="mini-btn" id="rng-apply" onclick="applyRange()"></button>
+        <button class="mini-btn ghost" id="rng-reset" onclick="setMonth('all')"></button>
+      </div>
+    </div>
+
     <div class="banner-projected" id="banner">
       <div>
-        <div class="banner-label">스토어 총 매출</div>
+        <div class="banner-label" id="banner-lbl"></div>
         <div class="banner-value" id="banner-val"></div>
         <div class="banner-meta" id="banner-meta"></div>
       </div>
@@ -97,13 +92,13 @@
     <div class="charts-grid">
       <div class="chart-card">
         <div class="chart-header">
-          <div class="chart-title">일별 매출 &amp; 방문자</div>
+          <div class="chart-title" id="chart-title-daily"></div>
         </div>
         <div class="chart-wrap"><canvas id="dailyChart"></canvas></div>
       </div>
       <div class="chart-card">
         <div class="chart-header">
-          <div class="chart-title">트래픽 소스별 방문</div>
+          <div class="chart-title" id="chart-title-src"></div>
         </div>
         <div class="source-rows" id="source-rows"></div>
       </div>
@@ -111,17 +106,13 @@
 
     <div class="bottom-grid">
       <div class="section-card">
-        <div class="section-header">📄 스토어 페이지별 성과</div>
+        <div class="section-header" id="sec-pages"></div>
         <div id="livepage-area"></div>
       </div>
       <div class="section-card">
-        <div class="section-header">📊 월별 비교</div>
+        <div class="section-header" id="sec-comp"></div>
         <table>
-          <thead>
-            <tr>
-              <th>월</th><th>매출</th><th>주문</th><th>방문자</th><th>조회수</th><th>CVR</th>
-            </tr>
-          </thead>
+          <thead><tr id="comp-head"></tr></thead>
           <tbody id="comp-tbody"></tbody>
         </table>
       </div>
@@ -190,11 +181,59 @@ const LIVE_PAGES = {
   '2026-04': [['홈',125,116,169,3,3],['All product',21,18,0,0,0],['Skin care',12,12,0,0,0],['Hair care',8,8,0,0,0]],
 };
 
+// ── I18N — 세일즈 대시보드와 동일 규칙: 통화 KRW=한글, 그 외 영어 (jb_currency 공유) ──
+const isKo=(()=>{try{return localStorage.getItem('jb_currency')==='KRW'}catch(e){return false}})();
+const L = isKo ? {
+  status:'데이터 기간: 2026.03.12 ~ 2026.05.31 · Amazon Brand Store 인사이트',
+  overview:'오버뷰',countryChannel:'국가 · 채널',salesMode:'매출',adsMode:'광고',storeMode:'스토어',settings:'설정',
+  period:'기간',apply:'적용',reset:'초기화',
+  months:{all:'전체','2026-03':'3월','2026-04':'4월','2026-05':'5월'},
+  mNames:{all:'2026년 3~5월 전체','2026-03':'2026년 3월','2026-04':'2026년 4월','2026-05':'2026년 5월'},
+  bannerLbl:'스토어 총 매출',
+  bannerMeta:(o,u,aov)=>`${o}주문 · ${u}단품 · AOV ${aov}`,
+  bannerSub:(v,c)=>`방문자 ${v}명 · CVR ${c}`,
+  kSales:'매출',kOrders:'주문',kVisitors:'방문자',kViews:'조회수',kCvr:'전환율 CVR',
+  sUnits:u=>`${u} units`,sAov:a=>`AOV ${a}`,sNew:(n,p)=>`신규 ${n}명 (${p})`,sPerV:p=>`인당 ${p}페이지`,sOrdV:(o,v)=>`${o}주문 / ${v}명`,
+  iBestSale:'최고 매출일',iBestVis:'최다 방문일',iSaleDays:'매출 발생일',iNewRate:'신규 방문율',iHomeShare:'홈 페이지 기여율',
+  dBestSale:(o,v)=>`${o}주문 / 방문자 ${v}명`,vBestVis:n=>`${n}명`,dBestVis:(vw,s)=>`조회수 ${vw} / 매출 ${s}`,
+  vSaleDays:(d,t)=>`${d}일 / ${t}일`,dSaleDays:p=>`${p}% 일 전환율`,dNewRate:(n,v)=>`신규 ${n}명 / ${v}명`,
+  chartDaily:'일별 매출 & 방문자',chartSrc:'트래픽 소스별 방문',dsSales:'매출($)',dsVisitors:'방문자',
+  ttSales:v=>`매출: $${v}`,ttVis:v=>`방문자: ${v}명`,
+  secPages:'📄 스토어 페이지별 성과',secComp:'📊 월별 비교',
+  thPages:['페이지','조회수','방문','비율','매출','주문','CVR'],thComp:['월','매출','주문','방문자','조회수','CVR'],
+  noData:'해당 기간 페이지 데이터 없음 (전체 탭에서 확인)',
+  pageName:n=>n,srcName:n=>n,
+} : {
+  status:'Data: 2026.03.12 ~ 2026.05.31 · Amazon Brand Store Insights',
+  overview:'Overview',countryChannel:'Country · Channel',salesMode:'Sales',adsMode:'Ads',storeMode:'Store',settings:'Settings',
+  period:'Period',apply:'Apply',reset:'Reset',
+  months:{all:'All','2026-03':'Mar','2026-04':'Apr','2026-05':'May'},
+  mNames:{all:'Mar–May 2026','2026-03':'Mar 2026','2026-04':'Apr 2026','2026-05':'May 2026'},
+  bannerLbl:'Store Total Sales',
+  bannerMeta:(o,u,aov)=>`${o} orders · ${u} units · AOV ${aov}`,
+  bannerSub:(v,c)=>`Visitors ${v} · CVR ${c}`,
+  kSales:'Sales',kOrders:'Orders',kVisitors:'Visitors',kViews:'Page Views',kCvr:'CVR',
+  sUnits:u=>`${u} units`,sAov:a=>`AOV ${a}`,sNew:(n,p)=>`New ${n} (${p})`,sPerV:p=>`${p} pages/visitor`,sOrdV:(o,v)=>`${o} orders / ${v} visitors`,
+  iBestSale:'Best Sales Day',iBestVis:'Top Traffic Day',iSaleDays:'Days with Sales',iNewRate:'New Visitor Rate',iHomeShare:'Home Page Share',
+  dBestSale:(o,v)=>`${o} orders / ${v} visitors`,vBestVis:n=>`${n}`,dBestVis:(vw,s)=>`Views ${vw} / Sales ${s}`,
+  vSaleDays:(d,t)=>`${d} / ${t} days`,dSaleDays:p=>`${p}% of days`,dNewRate:(n,v)=>`New ${n} / ${v}`,
+  chartDaily:'Daily Sales & Visitors',chartSrc:'Visits by Traffic Source',dsSales:'Sales($)',dsVisitors:'Visitors',
+  ttSales:v=>`Sales: $${v}`,ttVis:v=>`Visitors: ${v}`,
+  secPages:'📄 Store Page Performance',secComp:'📊 Monthly Comparison',
+  thPages:['Page','Views','Visits','Share','Sales','Orders','CVR'],thComp:['Month','Sales','Orders','Visitors','Views','CVR'],
+  noData:'No page data for this period (see All tab)',
+  pageName:n=>({'홈':'Home'}[n]||n),srcName:n=>({'바이라인':'Byline','기타':'Other','광고':'Ads'}[n]||n),
+};
+
 // ── HELPERS ──────────────────────────────────────────────────────────────────
 const fmt$  = v => '$' + v.toLocaleString('en',{minimumFractionDigits:2,maximumFractionDigits:2});
 const fmtI  = v => v.toLocaleString('en');
 const fmtP  = (v,d=1) => (v*100).toFixed(d)+'%';
-const getRows = mo => mo==='all' ? DAILY : DAILY.filter(r=>r[0].startsWith(mo));
+function getRows(){
+  if(curMo==='range') return DAILY.filter(r=>r[0]>=rangeFrom&&r[0]<=rangeTo);
+  return curMo==='all' ? DAILY : DAILY.filter(r=>r[0].startsWith(curMo));
+}
+const getRowsOf = mo => mo==='all' ? DAILY : DAILY.filter(r=>r[0].startsWith(mo));
 
 function agg(rows){
   return rows.reduce((a,r)=>({
@@ -217,49 +256,90 @@ function badge(d){
 }
 
 // ── STATE ────────────────────────────────────────────────────────────────────
-let curMo = 'all';
-let chart = null;
+let curMo='all', rangeFrom='2026-03-12', rangeTo='2026-05-31';
+let chart=null;
 
-// ── RENDER ───────────────────────────────────────────────────────────────────
+// ── STATIC UI (사이드바·navbar·고정 라벨) ────────────────────────────────────
+function renderStatic(){
+  const go=h=>`location.href='amazon_dashboard.html${h}'`;
+  const countries=[['US','🇺🇸'],['MY','🇲🇾'],['SG','🇸🇬'],['UAE','🇦🇪']];
+  document.getElementById('sidebar').innerHTML=
+    `<div class="sidebar-logo">📊 JungBeauty</div>`+
+    `<button class="sidebar-btn" onclick="${go('#mode=consolidated')}"><span class="ic">🌍</span><span>${L.overview}</span></button>`+
+    `<div class="sidebar-divider"></div>`+
+    `<div class="sidebar-section-lbl">${L.countryChannel}</div>`+
+    countries.map(([c,f])=>{
+      if(c==='US') return `<button class="sidebar-country active expanded"><span>${f}</span><span class="sc-name">US</span><span class="sc-arrow">▾</span></button>`+
+        `<button class="sidebar-channel active">Amazon</button>`+
+        `<button class="sidebar-mode" onclick="${go('')}">💰 <span>${L.salesMode}</span></button>`+
+        `<button class="sidebar-mode" onclick="${go('#mode=ads')}">📢 <span>${L.adsMode}</span></button>`+
+        `<button class="sidebar-mode active">🛍 <span>${L.storeMode}</span></button>`;
+      return `<button class="sidebar-country" onclick="${go('#country='+c)}"><span>${f}</span><span class="sc-name">${c}</span><span class="sc-arrow">▸</span></button>`;
+    }).join('')+
+    `<div class="sidebar-divider"></div>`+
+    `<button class="sidebar-btn" onclick="${go('#mode=settings')}"><span class="ic">⚙️</span><span>${L.settings}</span></button>`+
+    `<div class="sidebar-spacer"></div>`+
+    `<div class="sidebar-foot">🇺🇸 US · Amazon</div>`;
+
+  document.getElementById('status-bar').textContent=L.status;
+  document.getElementById('unit-tabs').innerHTML=['all','2026-03','2026-04','2026-05'].map(mo=>
+    `<button class="unit-tab${mo===curMo?' active':''}" data-mo="${mo}" onclick="setMonth('${mo}')">${L.months[mo]}</button>`).join('');
+  document.getElementById('rng-lbl').textContent=L.period;
+  document.getElementById('rng-apply').textContent=L.apply;
+  document.getElementById('rng-reset').textContent=L.reset;
+  document.getElementById('rng-from').value=rangeFrom;
+  document.getElementById('rng-to').value=rangeTo;
+  document.getElementById('banner-lbl').textContent=L.bannerLbl;
+  document.getElementById('chart-title-daily').textContent=L.chartDaily;
+  document.getElementById('chart-title-src').textContent=L.chartSrc;
+  document.getElementById('sec-pages').textContent=L.secPages;
+  document.getElementById('sec-comp').textContent=L.secComp;
+  document.getElementById('comp-head').innerHTML=L.thComp.map(h=>`<th>${h}</th>`).join('');
+}
+
+// ── CONTROLS ─────────────────────────────────────────────────────────────────
+const MO_BOUNDS={all:['2026-03-12','2026-05-31'],'2026-03':['2026-03-12','2026-03-31'],'2026-04':['2026-04-01','2026-04-30'],'2026-05':['2026-05-01','2026-05-31']};
 function setMonth(mo){
-  curMo = mo;
-  document.querySelectorAll('.tab-btn').forEach(t=>{
-    t.classList.toggle('active',
-      (mo==='all'&&t.textContent==='전체')||
-      (mo==='2026-03'&&t.textContent==='3월')||
-      (mo==='2026-04'&&t.textContent==='4월')||
-      (mo==='2026-05'&&t.textContent==='5월')
-    );
-  });
+  curMo=mo;
+  [rangeFrom,rangeTo]=MO_BOUNDS[mo];
+  document.getElementById('rng-from').value=rangeFrom;
+  document.getElementById('rng-to').value=rangeTo;
+  document.querySelectorAll('.unit-tab').forEach(t=>t.classList.toggle('active',t.dataset.mo===mo));
+  render();
+}
+function applyRange(){
+  const f=document.getElementById('rng-from').value, t=document.getElementById('rng-to').value;
+  if(!f||!t||f>t) return;
+  rangeFrom=f; rangeTo=t; curMo='range';
+  document.querySelectorAll('.unit-tab').forEach(t2=>t2.classList.remove('active'));
   render();
 }
 
+// ── RENDER ───────────────────────────────────────────────────────────────────
 function render(){
-  const rows = getRows(curMo);
+  const rows = getRows();
   const a    = agg(rows);
   const prev = PREV[curMo]||null;
-  const pa   = prev ? agg(getRows(prev)) : null;
+  const pa   = prev ? agg(getRowsOf(prev)) : null;
   const cvr  = a.visitors>0 ? a.orders/a.visitors : 0;
   const pcvr = pa&&pa.visitors>0 ? pa.orders/pa.visitors : null;
   const newRate = a.visitors>0 ? a.newV/a.visitors : 0;
 
   // Banner
-  const mName = {all:'2026년 3~5월 전체',
-    '2026-03':'2026년 3월','2026-04':'2026년 4월','2026-05':'2026년 5월'}[curMo];
+  const mName = curMo==='range' ? `${rangeFrom.replace(/-/g,'.')} ~ ${rangeTo.replace(/-/g,'.')}` : L.mNames[curMo];
   document.getElementById('banner-val').textContent = fmt$(a.sales);
   document.getElementById('banner-meta').textContent =
-    `${a.orders}주문 · ${a.units}단품 · AOV ${a.orders>0?fmt$(a.sales/a.orders):'-'}`;
+    L.bannerMeta(a.orders, a.units, a.orders>0?fmt$(a.sales/a.orders):'-');
   document.getElementById('banner-tag').textContent = mName;
-  document.getElementById('banner-sub').textContent =
-    `방문자 ${fmtI(a.visitors)}명 · CVR ${fmtP(cvr)}`;
+  document.getElementById('banner-sub').textContent = L.bannerSub(fmtI(a.visitors), fmtP(cvr));
 
-  // KPI — 세일즈 대시보드와 동일한 5칸 그리드, 값 색상 통일
+  // KPI — 세일즈 대시보드와 동일한 5칸 그리드
   const kpis=[
-    {l:'매출',      v:fmt$(a.sales),     d:delta(a.sales,pa?.sales),    s:`${a.units} units`},
-    {l:'주문',      v:fmtI(a.orders),    d:delta(a.orders,pa?.orders),  s:`AOV ${a.orders>0?fmt$(a.sales/a.orders):'-'}`},
-    {l:'방문자',    v:fmtI(a.visitors),  d:delta(a.visitors,pa?.visitors),s:`신규 ${fmtI(a.newV)}명 (${fmtP(newRate,0)})`},
-    {l:'조회수',    v:fmtI(a.views),     d:delta(a.views,pa?.views),    s:`인당 ${a.visitors>0?(a.views/a.visitors).toFixed(1):'-'}페이지`},
-    {l:'전환율 CVR',v:fmtP(cvr),         d:delta(cvr,pcvr),             s:`${a.orders}주문 / ${a.visitors}명`},
+    {l:L.kSales,   v:fmt$(a.sales),    d:delta(a.sales,pa?.sales),      s:L.sUnits(a.units)},
+    {l:L.kOrders,  v:fmtI(a.orders),   d:delta(a.orders,pa?.orders),    s:L.sAov(a.orders>0?fmt$(a.sales/a.orders):'-')},
+    {l:L.kVisitors,v:fmtI(a.visitors), d:delta(a.visitors,pa?.visitors),s:L.sNew(fmtI(a.newV),fmtP(newRate,0))},
+    {l:L.kViews,   v:fmtI(a.views),    d:delta(a.views,pa?.views),      s:L.sPerV(a.visitors>0?(a.views/a.visitors).toFixed(1):'-')},
+    {l:L.kCvr,     v:fmtP(cvr),        d:delta(cvr,pcvr),               s:L.sOrdV(a.orders,a.visitors)},
   ];
   document.getElementById('kpi-grid').innerHTML = kpis.map(k=>`
     <div class="kpi-card">
@@ -269,16 +349,16 @@ function render(){
       <div class="kpi-sub">${k.s}</div>
     </div>`).join('');
 
-  // Insights — ratio-card 스타일 (세일즈 대시보드 비율 카드와 동일)
+  // Insights — ratio-card 스타일
   const bestSales = rows.reduce((b,r)=>r[3]>(b?b[3]:0)?r:b, null);
   const bestVis   = rows.reduce((b,r)=>r[2]>(b?b[2]:0)?r:b, null);
   const salesDays = rows.filter(r=>r[3]>0).length;
   const ins = [
-    {l:'최고 매출일', v: bestSales&&bestSales[3]>0?`${bestSales[0].slice(5)} · ${fmt$(bestSales[3])}`:'—', d: bestSales&&bestSales[3]>0?`${bestSales[4]}주문 / 방문자 ${bestSales[2]}명`:''},
-    {l:'최다 방문일', v: bestVis?`${bestVis[0].slice(5)} · ${bestVis[2]}명`:'—', d: bestVis?`조회수 ${bestVis[1]} / 매출 ${bestVis[3]>0?fmt$(bestVis[3]):'$0'}`:''},
-    {l:'매출 발생일', v:`${salesDays}일 / ${rows.length}일`, d:`${(salesDays/rows.length*100).toFixed(1)}% 일 전환율`},
-    {l:'신규 방문율', v:fmtP(newRate), d:`신규 ${fmtI(a.newV)}명 / ${fmtI(a.visitors)}명`},
-    {l:'홈 페이지 기여율', v: curMo==='all'?'70.6%': curMo==='2026-04'?'100%':'—', d: curMo==='all'?'$755.58 / $1,070.16':curMo==='2026-04'?'$169 / $169':'-'},
+    {l:L.iBestSale, v: bestSales&&bestSales[3]>0?`${bestSales[0].slice(5)} · ${fmt$(bestSales[3])}`:'—', d: bestSales&&bestSales[3]>0?L.dBestSale(bestSales[4],bestSales[2]):''},
+    {l:L.iBestVis,  v: bestVis?`${bestVis[0].slice(5)} · ${L.vBestVis(bestVis[2])}`:'—', d: bestVis?L.dBestVis(bestVis[1],bestVis[3]>0?fmt$(bestVis[3]):'$0'):''},
+    {l:L.iSaleDays, v: L.vSaleDays(salesDays,rows.length), d: L.dSaleDays(rows.length>0?(salesDays/rows.length*100).toFixed(1):'0')},
+    {l:L.iNewRate,  v: fmtP(newRate), d: L.dNewRate(fmtI(a.newV),fmtI(a.visitors))},
+    {l:L.iHomeShare,v: curMo==='all'?'70.6%': curMo==='2026-04'?'100%':'—', d: curMo==='all'?'$755.58 / $1,070.16':curMo==='2026-04'?'$169 / $169':'-'},
   ];
   document.getElementById('insight-row').innerHTML = ins.map(i=>`
     <div class="ratio-card">
@@ -287,63 +367,62 @@ function render(){
       <div class="ratio-sub">${i.d}</div>
     </div>`).join('');
 
-  // Daily chart
+  // Daily chart — US 세일즈 차트와 동일 팔레트(#3b82f6 bar, #22c55e line, 흰 툴팁)
   const ctx = document.getElementById('dailyChart').getContext('2d');
   if(chart) chart.destroy();
   chart = new Chart(ctx,{
-    type:'bar',
     data:{
       labels: rows.map(r=>r[0].slice(5)),
       datasets:[
-        {label:'매출($)',data:rows.map(r=>r[3]),backgroundColor:'rgba(29,78,216,.25)',borderColor:'#1d4ed8',borderWidth:1.5,yAxisID:'y'},
-        {label:'방문자',data:rows.map(r=>r[2]),type:'line',borderColor:'#0891b2',backgroundColor:'transparent',borderWidth:2,pointRadius:rows.length>40?0:2.5,yAxisID:'y1',tension:.3},
+        {type:'bar',label:L.dsSales,data:rows.map(r=>r[3]),backgroundColor:'rgba(59,130,246,.75)',borderRadius:4,yAxisID:'y',order:2},
+        {type:'line',label:L.dsVisitors,data:rows.map(r=>r[2]),borderColor:'#22c55e',backgroundColor:'rgba(34,197,94,.08)',borderWidth:2,pointRadius:rows.length>40?0:3,tension:.4,fill:false,yAxisID:'y1',order:1},
       ]
     },
     options:{
-      responsive:true,maintainAspectRatio:false,
+      responsive:true,maintainAspectRatio:false,animation:false,
       interaction:{mode:'index',intersect:false},
       plugins:{
-        legend:{labels:{color:'#64748b',font:{size:11}}},
-        tooltip:{callbacks:{label:c=>c.dataset.label==='매출($)'?`매출: $${c.raw.toFixed(2)}`:`방문자: ${c.raw}명`}}
+        legend:{labels:{color:'#475569',boxWidth:10,font:{size:11}}},
+        tooltip:{backgroundColor:'#fff',borderColor:'#e2e8f0',borderWidth:1,titleColor:'#0f172a',bodyColor:'#334155',padding:10,
+          callbacks:{label:c=>c.dataset.type==='bar'?(' '+L.ttSales(c.raw.toFixed(2))):(' '+L.ttVis(c.raw))}}
       },
       scales:{
-        x:{ticks:{color:'#94a3b8',font:{size:9},maxTicksLimit:18},grid:{color:'rgba(0,0,0,.04)'}},
-        y:{ticks:{color:'#1d4ed8',font:{size:10},callback:v=>'$'+v},grid:{color:'rgba(0,0,0,.04)'},position:'left'},
-        y1:{ticks:{color:'#0891b2',font:{size:10}},grid:{display:false},position:'right'},
+        x:{ticks:{color:'#64748b',font:{size:9},maxTicksLimit:18,maxRotation:45},grid:{color:'#f1f5f9'}},
+        y:{position:'left',title:{display:true,text:L.kSales,color:'#94a3b8',font:{size:10}},
+          ticks:{color:'#3b82f6',font:{size:10},callback:v=>'$'+v},grid:{color:'#e2e8f0'}},
+        y1:{position:'right',title:{display:true,text:L.dsVisitors,color:'#94a3b8',font:{size:10}},
+          ticks:{color:'#22c55e',font:{size:10}},grid:{drawOnChartArea:false}},
       }
     }
   });
 
-  // Source
+  // Source — 월 키가 정확히 있을 때만 해당 월, 그 외(range 포함)는 전체
   const src = SOURCES[curMo]||SOURCES.all;
   const maxV = Math.max(...src.map(s=>s[1]),1);
-  const srcColors = ['#1d4ed8','#94a3b8','#e1306c','#ff0000','#3b82f6','#64748b'];
+  const srcColors = ['#3b82f6','#94a3b8','#e1306c','#ff0000','#2563eb','#64748b'];
   document.getElementById('source-rows').innerHTML = src.map((s,i)=>`
     <div class="source-row">
-      <div class="src-name">${s[0]}</div>
+      <div class="src-name">${L.srcName(s[0])}</div>
       <div class="src-bar-bg"><div class="src-bar" style="width:${(s[1]/maxV*100).toFixed(1)}%;background:${srcColors[i]}"></div></div>
       <div class="src-visits">${s[1]}</div>
       <div class="src-sales">${s[2]>0?fmt$(s[2]):''}</div>
     </div>`).join('');
 
-  // LivePage table
-  const pages = LIVE_PAGES[curMo]||LIVE_PAGES['all'];
-  const hasPages = pages && pages.some(p=>p[2]>0);
-  const totalPageVisits = pages.reduce((s,p)=>s+p[2],0);
+  // LivePage table — 해당 키 데이터가 있을 때만 표시 (없으면 no-data, 전체 데이터 폴백 금지)
+  const pages = LIVE_PAGES[curMo];
   let lpHtml;
-  if(!hasPages && curMo!=='all' && curMo!=='2026-04'){
-    lpHtml = `<div class="no-data">월별 페이지 데이터 없음 (전체 기간 탭에서 확인)</div>`;
+  if(!pages){
+    lpHtml = `<div class="no-data">${L.noData}</div>`;
   } else {
+    const totalPageVisits = pages.reduce((s,p)=>s+p[2],0);
     lpHtml = `<table>
-      <thead><tr>
-        <th>페이지</th><th>조회수</th><th>방문</th><th>비율</th><th>매출</th><th>주문</th><th>CVR</th>
-      </tr></thead>
+      <thead><tr>${L.thPages.map(h=>`<th>${h}</th>`).join('')}</tr></thead>
       <tbody>
       ${pages.map(p=>{
         const cvr2 = p[2]>0?p[4]/p[2]:0;
         const pct  = totalPageVisits>0?p[2]/totalPageVisits:0;
         return `<tr ${p[3]>0?'class="row-hl"':''}>
-          <td>${p[0]}</td>
+          <td>${L.pageName(p[0])}</td>
           <td>${fmtI(p[1])}</td>
           <td>${fmtI(p[2])}</td>
           <td><div style="display:flex;align-items:center;gap:6px;justify-content:flex-end">
@@ -364,15 +443,14 @@ function render(){
 
   // Comparison table
   const mos = ['2026-03','2026-04','2026-05'];
-  const mLabels = {'2026-03':'3월','2026-04':'4월','2026-05':'5월'};
   document.getElementById('comp-tbody').innerHTML = mos.map(mo=>{
-    const d   = agg(getRows(mo));
-    const pd  = agg(getRows(PREV[mo]||'__'));
+    const d   = agg(getRowsOf(mo));
+    const pd  = agg(getRowsOf(PREV[mo]||'__'));
     const cvr2= d.visitors>0?(d.orders/d.visitors*100).toFixed(1)+'%':'—';
     const hl  = curMo===mo?'row-hl':'';
     const dlt = curMo===mo&&PREV[mo]?badge(delta(d.sales,pd.sales)):'';
     return `<tr class="${hl}">
-      <td>${mLabels[mo]}</td>
+      <td>${L.months[mo]}</td>
       <td>${fmt$(d.sales)} ${dlt}</td>
       <td>${d.orders}</td>
       <td>${d.visitors}</td>
@@ -382,6 +460,7 @@ function render(){
   }).join('');
 }
 
+renderStatic();
 render();
 </script>
 </body>

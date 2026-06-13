@@ -168,9 +168,23 @@
 - US Amazon Brand Store 인사이트 페이지 (단독 html, 데이터는 파일 내 하드코딩 — Drive 동기화 아님)
 - **amazon_dashboard.css를 직접 `<link>`** 해서 세일즈 대시보드와 디자인 단일 소스 유지 — 페이지 전용 스타일(소스바, bottom-grid 등)만 인라인 `<style>` 오버라이드. 디자인 변경은 amazon_dashboard.css에서 하면 두 페이지에 동시 반영
 - 레이아웃 셸 동일: 사이드바(국가·채널 트리, 🛍 스토어 모드 active) + topbar 1줄(규칙 7-4 준수) + status-bar + content
-- **사이드바 상호 링크**: 세일즈 `renderSidebar()`는 US/AMZ 채널에서만 🛍 스토어 버튼 노출 → `store_dashboard.html` 이동. 스토어 쪽 매출/광고/오버뷰/설정 버튼 → `amazon_dashboard.html` 복귀
+- **언어 = 세일즈와 동일 규칙**: `jb_currency === 'KRW'` → 한글, 그 외 영어. 세일즈 `setCurrency()`가 `localStorage['jb_currency']`에 저장하고 양 페이지가 공유 (2026-06-13: 통화 미저장이라 페이지 간 언어 불일치하던 문제 수정)
+- **사이드바 = 세일즈와 동일한 국가 트리** (US 펼침: Amazon→매출/광고/스토어, MY/SG/UAE 접힘):
+  - 타 국가 클릭 → `amazon_dashboard.html#country=MY` 식 딥링크
+  - 오버뷰/광고/설정 → `#mode=consolidated|ads|settings`
+  - 세일즈 DOMContentLoaded가 해시 파싱 → `toggleCountry()`/`setMode()` 호출 후 해시 제거
+  - 세일즈 `renderSidebar()`는 US/AMZ 채널에서만 🛍 스토어 버튼 노출 → `store_dashboard.html` 이동
+- **일별 차트 = US 세일즈 차트 팔레트**: 매출 bar `rgba(59,130,246,.75)`+`borderRadius:4`, 보조 line `#22c55e`(tension .4), 흰 툴팁(`#fff`/`#e2e8f0`), x축 ticks `#64748b`·grid `#f1f5f9`, y축 ticks는 데이터셋 색상
 - 컴포넌트 재사용: KPI는 `kpi-grid5`(5칸, 검정 값), 인사이트는 `ratio-grid`(가운데 정렬, 파란 값)
 - 페이지별 CVR = 주문 ÷ 방문 (2026-06-13 수정: 이전엔 매출÷방문으로 잘못 계산)
+- **LIVE_PAGES/SOURCES 월별 표시**: 페이지 테이블은 해당 월 키가 정확히 있을 때만 표시, 없으면 no-data (전체 기간 데이터로 폴백 금지 — 3월 탭에 전체 수치가 뜨던 버그 2026-06-13 수정)
+
+### 7-6. 날짜·기간 선택 UI 위치 (2026-06-13 합의)
+- **모든 날짜/월/기간 선택 컨트롤은 topbar가 아니라 콘텐츠 영역 상단 `.navbar` 카드에 배치한다**
+  - navbar-left: `year-tabs`(연도) + `unit-tabs`(월/단위 탭)
+  - navbar-right: `기간` date range 인풋 + 적용/초기화
+- topbar에는 전역 컨트롤만: 로고·배지(좌) / 뷰 탭·통화·Vine·동기화(우)
+- 신규 페이지/대시보드를 추가할 때도 동일하게 적용 (스토어 대시보드가 첫 적용 사례 — 월 탭을 topbar에서 navbar로 이동)
 
 ---
 

@@ -726,7 +726,7 @@ function _syncRangeToYear(yr){
   rangeTo=`${last.yr}-${String(last.mo).padStart(2,'0')}-${String(ldim).padStart(2,'0')}`;
   dpSetVal('rng-from',rangeFrom); dpSetVal('rng-to',rangeTo);
 }
-function setCurrency(c,btn){ activeCurrency=c; document.querySelectorAll('.cur-btn').forEach(b=>b.classList.remove('active')); btn.classList.add('active'); applyI18nStatic(); render(); }
+function setCurrency(c,btn){ activeCurrency=c; try{localStorage.setItem('jb_currency',c)}catch(e){} document.querySelectorAll('.cur-btn').forEach(b=>b.classList.remove('active')); btn.classList.add('active'); applyI18nStatic(); render(); }
 function setVineMode(m){ vineMode=m; document.getElementById('vine-inc').classList.toggle('active',m==='include'); document.getElementById('vine-exc').classList.toggle('active',m==='exclude'); render(); }
 function setChartType(t){ chartType=t; document.getElementById('ct-bar').classList.toggle('active',t==='bar'); document.getElementById('ct-line').classList.toggle('active',t==='line'); document.getElementById('ct-mix').classList.toggle('active',t==='mix'); render(); }
 
@@ -3179,12 +3179,24 @@ function renderNewKeywords(){
 
 // ──── AUTO-START: 페이지 로드 시 바로 대시보드 진입 ──────────────
 window.addEventListener('DOMContentLoaded', () => {
+  // 통화 복원 (jb_currency — store_dashboard.html과 언어 설정 공유)
+  try{const c=localStorage.getItem('jb_currency');
+    if(c&&['USD','SGD','MYR','KRW'].includes(c)){activeCurrency=c;
+      document.querySelectorAll('.cur-btn').forEach(b=>b.classList.toggle('active',b.textContent.trim()===c));}}catch(e){}
   const stored = loadFromStorage();
   allData = stored.length ? mergeData(PRELOADED, stored) : PRELOADED;
   // Re-apply VINE_ITEMS so vine_adj always reflects current VINE_ITEMS (not stale localStorage values)
   const _initVm={}; VINE_ITEMS.forEach(v=>{const k=v.yr+'_'+v.mo+'_'+v.day;_initVm[k]=(_initVm[k]||0)+(v.adj||0);});
   allData.forEach(r=>{const k=r.yr+'_'+r.mo+'_'+r.day;r.vine_adj=_initVm[k]||0;});
   buildByMonth(); showDash();
+  // 스토어 페이지 사이드바 딥링크: #country=MY / #mode=ads|consolidated|settings
+  try{
+    const h=new URLSearchParams(location.hash.slice(1));
+    const hc=h.get('country'), hm=h.get('mode');
+    if(hc&&COUNTRY_CHANNELS[hc]&&hc!=='US') toggleCountry(hc);
+    else if(hm&&['ads','consolidated','settings'].includes(hm)) setMode(hm);
+    if(location.hash) history.replaceState(null,'',location.pathname+location.search);
+  }catch(e){}
   // Background sync (silent, skip if same CA day)
   autoSyncOnLoad();
 });
