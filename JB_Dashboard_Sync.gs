@@ -9,9 +9,13 @@
 //   - doGet: PropertiesService 캐시 추가 (파일 변경 없으면 즉시 반환)
 //   - syncGmailToDrive: xlsx 첨부파일을 Google Sheets로 바로 변환 저장
 //     (doGet에서 매번 xlsx→Sheets 변환하는 것 제거 → 타임아웃 해결)
+// v8 변경:
+//   - doGet: SALES_FOLDER_ID(Business Reports)도 읽어 매출 데이터 포함 반환
+//     (_adOnly 행에 sales/orders/sessions 병합 → Total Sales 자동 표시)
 // ================================================================
 
 const FOLDER_ID = '1VO9j_TnG60XJEfGxS0kIvfO7ShMdIn5z';
+const SALES_FOLDER_ID = '1x73-EInZzQKJ7_mD0LCzfhTN_5NF-A9P'; // US Amazon Business Reports
 
 const GMAIL_QUERIES = [
   'from:amazon subject:report has:attachment newer_than:60d',
@@ -68,12 +72,16 @@ function doGet(e) {
     const fileList = [];
     while (iter.hasNext()) fileList.push(iter.next());
 
-    // 폴더 내 파일 중 가장 최근 수정 시간 계산
+    // 폴더 내 파일 중 가장 최근 수정 시간 계산 (ads + sales 폴더 모두)
     let maxMod = 0;
     for (const f of fileList) {
       const m = f.getLastUpdated().getTime();
       if (m > maxMod) maxMod = m;
     }
+    try {
+      const sfIter0 = DriveApp.getFolderById(SALES_FOLDER_ID).getFiles();
+      while (sfIter0.hasNext()) { const m = sfIter0.next().getLastUpdated().getTime(); if (m > maxMod) maxMod = m; }
+    } catch(e) {}
 
     // 캐시 확인 — 파일이 바뀌지 않았으면 즉시 반환
     const props = PropertiesService.getScriptProperties();
@@ -138,6 +146,20 @@ function doGet(e) {
         for (const k in fb) byDate[k] = fb[k];
       }
     }
+
+    // Business Reports(매출) 읽기 — sales 폴더 CSV를 ads 데이터에 병합
+    try {
+      const sfIter = DriveApp.getFolderById(SALES_FOLDER_ID).getFiles();
+      while (sfIter.hasNext()) {
+        const sf = sfIter.next();
+        if (sf.getName().toLowerCase().endsWith('.csv')) {
+          try {
+            parseBusinessReportCsv(sf.getBlob().getDataAsString('UTF-8'), byDate);
+            fileCount++;
+          } catch(e) { Logger.log('Sales CSV error: ' + sf.getName() + ' - ' + e.message); }
+        }
+      }
+    } catch(e) { Logger.log('Sales folder error: ' + e.message); }
 
     const data = Object.values(byDate).sort((a, b) =>
       new Date(a.yr, a.mo - 1, a.day) - new Date(b.yr, b.mo - 1, b.day));
@@ -385,6 +407,75 @@ function createTrigger() {
   ScriptApp.newTrigger('syncGmailToDrive')
     .timeBased().atHour(21).everyDays(1).inTimezone('Asia/Seoul').create();
   Logger.log('trigger set: daily 9am + 9pm KST');
+}
+
+// ================================================================
+// Business Report CSV 파서 (US Amazon 매출 데이터)
+// ================================================================
+function parseBusinessReportCsv(csvText, byDate) {
+  if (csvText.charCodeAt(0) === 0xFEFF) csvText = csvText.slice(1);
+  const lines = csvText.split(/\r?\n/);
+  if (lines.length < 2) return;
+  const headers = parseCsvLine(lines[0]).map(h => h.trim());
+
+  const dateIdx    = headers.findIndex(h => h.includes('날짜') || h.toLowerCase() === 'date');
+  const salesIdx   = headers.findIndex(h => h.includes('판매량') || h.includes('Product Sales'));
+  const ordersIdx  = headers.findIndex(h => h.includes('주문 수량') || h.includes('Units Ordered'));
+  const itemsIdx   = headers.findIndex(h => h.includes('총 주문 아이템') || h.includes('Total Order Items'));
+  const sessionsIdx= headers.findIndex(h => h.includes('세션') || h.toLowerCase().includes('sessions'));
+
+  if (dateIdx < 0 || salesIdx < 0) {
+    Logger.log('Business Report: required columns not found. headers: ' + headers.join('|'));
+    return;
+  }
+
+  for (let i = 1; i < lines.length; i++) {
+    const line = lines[i].trim();
+    if (!line) continue;
+    const row = parseCsvLine(line);
+    if (!row || row.length < 2) continue;
+
+    const d = parseBizReportDate(row[dateIdx] ? String(row[dateIdx]).trim() : '');
+    if (!d) continue;
+
+    const k   = d.yr + '_' + d.mo + '_' + d.day;
+    const DOW = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][new Date(d.yr, d.mo-1, d.day).getDay()];
+    const sales    = toNum(row[salesIdx]);
+    const orders   = ordersIdx  >= 0 ? toNum(row[ordersIdx])  : 0;
+    const items    = itemsIdx   >= 0 ? toNum(row[itemsIdx])   : 0;
+    const sessions = sessionsIdx>= 0 ? toNum(row[sessionsIdx]): 0;
+
+    if (byDate[k]) {
+      // 기존 ads 행에 sales 데이터 병합, _adOnly 해제
+      byDate[k].sales    = sales;
+      byDate[k].orders   = orders;
+      byDate[k].items    = items;
+      byDate[k].sessions = sessions;
+      byDate[k].organic  = Math.max(0, sales - (byDate[k].adSales || 0));
+      delete byDate[k]._adOnly;
+    } else {
+      byDate[k] = {
+        yr: d.yr, mo: d.mo, day: d.day, dow: DOW,
+        sales: sales, orders: orders, items: items, sessions: sessions,
+        salesKRW: 0, vine_adj: 0,
+        adSpend: 0, adSales: 0, impr: 0, clicks: 0, adOrders: 0,
+        organic: sales,
+      };
+    }
+  }
+}
+
+function parseBizReportDate(str) {
+  // "26. 6. 9." or "26. 06. 09." (한국 형식)
+  const s = str.replace(/\.\s*$/, '');
+  const m1 = s.match(/^(\d{2})[\.\s]+(\d{1,2})[\.\s]+(\d{1,2})/);
+  if (m1) return {yr: 2000 + parseInt(m1[1]), mo: parseInt(m1[2]), day: parseInt(m1[3])};
+  // 표준 형식: "2026-06-09" or "6/9/2026"
+  const d = new Date(str);
+  if (!isNaN(d.getTime()) && d.getFullYear() >= 2020) {
+    return {yr: d.getFullYear(), mo: d.getMonth() + 1, day: d.getDate()};
+  }
+  return null;
 }
 
 // ================================================================
