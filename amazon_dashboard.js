@@ -466,11 +466,19 @@ function renderSidebar(){
         const chActive=isActive&&ch.id===activeChannel;
         let modeItems='';
         if(chActive){
-          modeItems=
-            `<button class="sidebar-mode${appMode==='sales'?' active':''}" onclick="setMode('sales')">💰 <span>${isKo()?'매출':'Sales'}</span></button>`+
-            `<button class="sidebar-mode${appMode==='ads'?' active':''}" onclick="setMode('ads')">📢 <span>${isKo()?'광고':'Ads'}</span></button>`;
-          if(c==='US'&&ch.id==='AMZ')
-            modeItems+=`<button class="sidebar-mode" onclick="location.href='store_dashboard.html'">🛍 <span>${isKo()?'스토어':'Store'}</span></button>`;
+          if(c==='US'){
+            modeItems=
+              `<button class="sidebar-mode${appMode==='sales'?' active':''}" onclick="setMode('sales')">💰 <span>${isKo()?'매출':'Sales'}</span></button>`+
+              `<button class="sidebar-mode${appMode==='ads'?' active':''}" onclick="setMode('ads')">📢 <span>${isKo()?'광고':'Ads'}</span></button>`;
+            if(ch.id==='AMZ')
+              modeItems+=`<button class="sidebar-mode" onclick="location.href='store_dashboard.html'">🛍 <span>${isKo()?'스토어':'Store'}</span></button>`;
+          } else {
+            const salesCh=(COUNTRY_CHANNELS[c]||[]).find(x=>!x.id.includes('Ads'));
+            const adsCh=(COUNTRY_CHANNELS[c]||[]).find(x=>x.id.includes('Ads'));
+            const curIsAds=activeChannel.includes('Ads');
+            if(salesCh) modeItems+=`<button class="sidebar-mode${!curIsAds?' active':''}" onclick="setCountryChannel('${c}','${salesCh.id}')">💰 <span>${isKo()?'매출':'Sales'}</span></button>`;
+            if(adsCh)   modeItems+=`<button class="sidebar-mode${curIsAds?' active':''}" onclick="setCountryChannel('${c}','${adsCh.id}')">📢 <span>${isKo()?'광고':'Ads'}</span></button>`;
+          }
         }
         return `<button class="sidebar-channel${chActive?' active':''}" onclick="setCountryChannel('${c}','${ch.id}')">${ch.label}</button>${modeItems}`;
       }).join('');
@@ -546,7 +554,7 @@ async function renderConsolidatedOverview(){
       const o=touch(c,d.yr,d.mo);
       o.sales+=_usdFrom(d.sales||0,r.currency,d.yr,d.mo);
       o.adSpend+=_usdFrom(d.adSpend||0,r.currency,d.yr,d.mo);
-      o.orders+=d.orders||0;
+      o.orders+=(d.orders||0)+(d.adOrders||0);
     });
   });
 
@@ -3268,7 +3276,8 @@ function toggleCountry(country) {
 
 function setCountryChannel(country, channel) {
   activeCountry=country; activeChannel=channel;
-  if(appMode==='consolidated'||appMode==='settings') appMode='sales';
+  if(country!=='US') appMode='sales';
+  else if(appMode==='consolidated'||appMode==='settings') appMode='sales';
   Object.keys(sidebarExpanded).forEach(c => sidebarExpanded[c]=false);
   sidebarExpanded[country]=true;
   applyI18nStatic();
@@ -3338,7 +3347,7 @@ function renderMysg(cached) {
 
   // KPI values
   const totalVal   = data.reduce((s,d)=>s+(isAds?(d.adSpend||0):(d.sales||0)),0);
-  const totalOrds  = data.reduce((s,d)=>s+(d.orders||0),0);
+  const totalOrds  = data.reduce((s,d)=>s+(isAds?(d.adOrders||0):(d.orders||0)),0);
   const avgOrd     = totalOrds>0?totalVal/totalOrds:0;
 
   const kpis = isAds
