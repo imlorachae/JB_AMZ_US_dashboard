@@ -562,6 +562,7 @@ function doGetCountry(e) {
     }
 
     const byMo = {};
+    const byMoProd = {};
     let fileCount = 0;
     const filesFound = files.length;
     const parseErrors = [];
@@ -575,6 +576,15 @@ function doGetCountry(e) {
       byMo[k].orders   += result.orders   || 0;
       byMo[k].adSpend  += result.adSpend  || 0;
       byMo[k].adOrders += result.adOrders || 0;
+      if (result.products && result.products.length) {
+        if (!byMoProd[k]) byMoProd[k] = {};
+        result.products.forEach(function(p) {
+          if (!p.name) return;
+          if (!byMoProd[k][p.name]) byMoProd[k][p.name] = {name:p.name, qty:0, sales:0};
+          byMoProd[k][p.name].qty   += p.qty   || 0;
+          byMoProd[k][p.name].sales += p.sales || 0;
+        });
+      }
       fileCount++;
     }
 
@@ -582,7 +592,20 @@ function doGetCountry(e) {
     if (channel === 'FBAds') currency = 'USD';
 
     const data = Object.values(byMo).sort((a,b) => a.yr!==b.yr ? a.yr-b.yr : a.mo-b.mo);
-    const out  = JSON.stringify({success:true, country, channel, currency, data, fileCount, filesFound, parseErrors});
+
+    const allProducts = [];
+    Object.keys(byMoProd).forEach(function(k) {
+      const parts = k.split('_');
+      const yr = parseInt(parts[0]), mo = parseInt(parts[1]);
+      Object.values(byMoProd[k])
+        .sort(function(a,b){ return (b.qty||0)-(a.qty||0); })
+        .slice(0, 20)
+        .forEach(function(p) {
+          allProducts.push({yr:yr, mo:mo, name:p.name, qty:Math.round(p.qty), sales:Math.round(p.sales*100)/100});
+        });
+    });
+
+    const out = JSON.stringify({success:true, country, channel, currency, data, products:allProducts, fileCount, filesFound, parseErrors});
 
     try { props.setProperty(cacheModKey, String(maxMod)); props.setProperty(cacheDataKey, out); }
     catch(ce) { Logger.log('Cache save failed: ' + ce.message); }
@@ -710,9 +733,11 @@ function parseShopifyCsvMonthly(text, ym, filterJB) {
   const vendorIdx   = headers.findIndex(h => h.includes('vendor'));
   const netSalesIdx = headers.findIndex(h => h === 'net sales' || h.includes('net sales'));
   const ordersIdx   = headers.findIndex(h => h === 'orders' || h === 'net items sold');
+  const nameIdx     = headers.findIndex(h => h === 'product' || h.includes('product title') || h === 'title');
   if (netSalesIdx < 0) { Logger.log('Shopify: no net sales col. headers: ' + headers.join('|')); return null; }
 
   let totalSales = 0, totalOrders = 0;
+  const products = {};
   for (let i = 1; i < lines.length; i++) {
     const line = lines[i].trim(); if (!line) continue;
     const row  = parseCsvLine(line); if (!row || row.length < 3) continue;
@@ -723,9 +748,18 @@ function parseShopifyCsvMonthly(text, ym, filterJB) {
     const sales = toNum(row[netSalesIdx]);
     if (sales === 0 && filterJB) continue;
     totalSales  += sales;
-    if (ordersIdx >= 0) totalOrders += toNum(row[ordersIdx]);
+    const qty = ordersIdx >= 0 ? toNum(row[ordersIdx]) : 0;
+    if (ordersIdx >= 0) totalOrders += qty;
+    if (nameIdx >= 0) {
+      const name = row[nameIdx].replace(/^"|"$/g,'').trim();
+      if (name) {
+        if (!products[name]) products[name] = {name:name, qty:0, sales:0};
+        products[name].qty   += qty;
+        products[name].sales += sales;
+      }
+    }
   }
-  return {yr:ym.yr, mo:ym.mo, sales:totalSales, orders:totalOrders};
+  return {yr:ym.yr, mo:ym.mo, sales:totalSales, orders:totalOrders, products:Object.values(products)};
 }
 
 // ────────────────────────────────────────────────────────────────
@@ -768,6 +802,7 @@ function parseShopeeXlsxMonthly(values, ym, filterJB) {
   const varIdx = headers.findIndex(h => h === 'variation id' || h === 'variation name');
 
   let totalSales = 0, totalOrders = 0;
+  const products = {};
   for (let i = hi + 1; i < values.length; i++) {
     const row = values[i];
     if (!row || row[salesIdx] === '' || row[salesIdx] === null || row[salesIdx] === undefined) continue;
@@ -779,10 +814,20 @@ function parseShopeeXlsxMonthly(values, ym, filterJB) {
       const pname = String(row[nameIdx]||'').toLowerCase();
       if (!pname.includes('jung beauty')) continue;
     }
-    totalSales  += toNum(row[salesIdx]);
-    if (ordersIdx >= 0) totalOrders += toNum(row[ordersIdx]);
+    const sales = toNum(row[salesIdx]);
+    const qty   = ordersIdx >= 0 ? toNum(row[ordersIdx]) : 0;
+    totalSales  += sales;
+    if (ordersIdx >= 0) totalOrders += qty;
+    if (nameIdx >= 0) {
+      const name = String(row[nameIdx]||'').trim();
+      if (name) {
+        if (!products[name]) products[name] = {name:name, qty:0, sales:0};
+        products[name].qty   += qty;
+        products[name].sales += sales;
+      }
+    }
   }
-  return {yr:ym.yr, mo:ym.mo, sales:totalSales, orders:totalOrders};
+  return {yr:ym.yr, mo:ym.mo, sales:totalSales, orders:totalOrders, products:Object.values(products)};
 }
 
 // ────────────────────────────────────────────────────────────────
@@ -808,6 +853,7 @@ function parseTikTokSalesXlsx(values, ym, filterJB) {
   if (gmvIdx < 0) { Logger.log('TikTok Sales: no GMV col'); return null; }
 
   let totalGmv = 0, totalOrders = 0;
+  const products = {};
   for (let i = hi + 1; i < values.length; i++) {
     const row = values[i];
     if (!row || row[gmvIdx] === '' || row[gmvIdx] === null || row[gmvIdx] === undefined) continue;
@@ -815,10 +861,20 @@ function parseTikTokSalesXlsx(values, ym, filterJB) {
       const pname = String(row[nameIdx]||'').toLowerCase();
       if (!pname.includes('jung beauty')) continue;
     }
-    totalGmv   += tnum(row[gmvIdx]);
-    if (ordersIdx >= 0) totalOrders += tnum(row[ordersIdx]);
+    const gmv = tnum(row[gmvIdx]);
+    const qty = ordersIdx >= 0 ? tnum(row[ordersIdx]) : 0;
+    totalGmv   += gmv;
+    if (ordersIdx >= 0) totalOrders += qty;
+    if (nameIdx >= 0) {
+      const name = String(row[nameIdx]||'').trim();
+      if (name) {
+        if (!products[name]) products[name] = {name:name, qty:0, sales:0};
+        products[name].qty   += qty;
+        products[name].sales += gmv;
+      }
+    }
   }
-  return {yr:ym.yr, mo:ym.mo, sales:totalGmv, orders:totalOrders};
+  return {yr:ym.yr, mo:ym.mo, sales:totalGmv, orders:totalOrders, products:Object.values(products)};
 }
 
 // ────────────────────────────────────────────────────────────────
