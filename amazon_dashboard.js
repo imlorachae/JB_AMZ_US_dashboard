@@ -2326,7 +2326,7 @@ async function syncFromDriveAndShow() {
   try {
     const base = loadFromStorage().length ? mergeData(PRELOADED, loadFromStorage()) : PRELOADED;
     allData = base;
-    const res = await fetch(DRIVE_SCRIPT_URL, {redirect:'follow'});
+    const res = await fetch(_addToken(DRIVE_SCRIPT_URL), {redirect:'follow'});
     const json = await res.json();
     if(json.success && json.data?.length) {
       allData = mergeData(base, json.data);
@@ -2349,7 +2349,7 @@ async function syncFromDrive(silent=false) {
   if(btn) { btn.textContent='⏳'; btn.disabled=true; }
 
   try {
-    const res = await fetch(DRIVE_SCRIPT_URL, {redirect:'follow'});
+    const res = await fetch(_addToken(DRIVE_SCRIPT_URL), {redirect:'follow'});
     if(!res.ok) throw new Error('HTTP ' + res.status);
     const json = await res.json();
 
@@ -3178,27 +3178,65 @@ function renderNewKeywords(){
 }
 
 // ──── AUTO-START: 페이지 로드 시 바로 대시보드 진입 ──────────────
-window.addEventListener('DOMContentLoaded', () => {
-  // 통화 복원 (jb_currency — store_dashboard.html과 언어 설정 공유)
+// ──── AUTH (Google Sign-In / ksisters.sg) ────────────────────────
+const _GIS_CLIENT = '547401483249-ml798ecieflqjvn7cfscabt62vfo2qim.apps.googleusercontent.com';
+const _AUTH_DOMAIN = 'ksisters.sg';
+let _authToken = null;
+
+function _parseJwt(t){try{let b=t.split('.')[1].replace(/-/g,'+').replace(/_/g,'/');while(b.length%4)b+='=';return JSON.parse(atob(b));}catch(e){return null;}}
+function _tokenOk(t){if(!t)return false;const p=_parseJwt(t);return p&&p.hd===_AUTH_DOMAIN&&p.exp*1000>Date.now()+30000;}
+function _addToken(url){if(!_authToken)return url;return url+(url.includes('?')?'&':'?')+'token='+encodeURIComponent(_authToken);}
+
+function _restoreAuth(){
+  try{const t=sessionStorage.getItem('jb_auth');if(_tokenOk(t)){_authToken=t;return true;}}catch(e){}
+  return false;
+}
+
+function _onSignIn(resp){
+  const t=resp.credential, p=_parseJwt(t);
+  const err=document.getElementById('auth-error');
+  if(!p||p.hd!==_AUTH_DOMAIN){
+    if(err){err.textContent='@'+_AUTH_DOMAIN+' 계정만 접근 가능합니다.';err.style.display='block';}
+    return;
+  }
+  _authToken=t;
+  try{sessionStorage.setItem('jb_auth',t);}catch(e){}
+  document.getElementById('auth-screen').style.display='none';
+  _startDash();
+}
+
+function _showAuth(){
+  const ld=document.getElementById('loading'); if(ld) ld.classList.remove('show');
+  const s=document.getElementById('auth-screen');
+  if(!s)return;
+  s.style.display='flex';
+  google.accounts.id.initialize({client_id:_GIS_CLIENT,callback:_onSignIn,auto_select:false});
+  google.accounts.id.renderButton(document.getElementById('g-signin-btn'),{theme:'outline',size:'large',locale:'ko'});
+}
+
+function _startDash(){
   try{const c=localStorage.getItem('jb_currency');
     if(c&&['USD','SGD','MYR','KRW'].includes(c)){activeCurrency=c;
       document.querySelectorAll('.cur-btn').forEach(b=>b.classList.toggle('active',b.textContent.trim()===c));}}catch(e){}
-  const stored = loadFromStorage();
-  allData = stored.length ? mergeData(PRELOADED, stored) : PRELOADED;
-  // Re-apply VINE_ITEMS so vine_adj always reflects current VINE_ITEMS (not stale localStorage values)
-  const _initVm={}; VINE_ITEMS.forEach(v=>{const k=v.yr+'_'+v.mo+'_'+v.day;_initVm[k]=(_initVm[k]||0)+(v.adj||0);});
-  allData.forEach(r=>{const k=r.yr+'_'+r.mo+'_'+r.day;r.vine_adj=_initVm[k]||0;});
-  buildByMonth(); showDash();
-  // 스토어 페이지 사이드바 딥링크: #country=MY / #mode=ads|consolidated|settings
+  const stored=loadFromStorage();
+  allData=stored.length?mergeData(PRELOADED,stored):PRELOADED;
+  const _vm={};VINE_ITEMS.forEach(v=>{const k=v.yr+'_'+v.mo+'_'+v.day;_vm[k]=(_vm[k]||0)+(v.adj||0);});
+  allData.forEach(r=>{const k=r.yr+'_'+r.mo+'_'+r.day;r.vine_adj=_vm[k]||0;});
+  buildByMonth();showDash();
   try{
     const h=new URLSearchParams(location.hash.slice(1));
-    const hc=h.get('country'), hm=h.get('mode');
-    if(hc&&COUNTRY_CHANNELS[hc]&&hc!=='US') toggleCountry(hc);
-    else if(hm&&['ads','consolidated','settings'].includes(hm)) setMode(hm);
-    if(location.hash) history.replaceState(null,'',location.pathname+location.search);
+    const hc=h.get('country'),hm=h.get('mode');
+    if(hc&&COUNTRY_CHANNELS[hc]&&hc!=='US')toggleCountry(hc);
+    else if(hm&&['ads','consolidated','settings'].includes(hm))setMode(hm);
+    if(location.hash)history.replaceState(null,'',location.pathname+location.search);
   }catch(e){}
-  // Background sync (silent, skip if same CA day)
   autoSyncOnLoad();
+}
+
+window.addEventListener('DOMContentLoaded', () => {
+  if(_restoreAuth()){_startDash();return;}
+  const wait=()=>{if(window.google&&google.accounts&&google.accounts.id)_showAuth();else setTimeout(wait,50);};
+  wait();
 });
 
 // ──── MULTI-COUNTRY / CHANNEL ─────────────────────────────────────
@@ -3245,7 +3283,7 @@ async function syncCountryData(country, channel) {
   const key=country+'_'+channel;
   if(mysgCache[key]) return mysgCache[key];
   try {
-    const res  = await fetch(DRIVE_SCRIPT_URL+'?country='+country+'&channel='+channel, {redirect:'follow'});
+    const res  = await fetch(_addToken(DRIVE_SCRIPT_URL+'?country='+country+'&channel='+channel), {redirect:'follow'});
     if(!res.ok) throw new Error('HTTP '+res.status);
     const json = await res.json();
     if(json.success && json.data){

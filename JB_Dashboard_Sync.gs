@@ -39,7 +39,26 @@ const FOLDER_MAP = {
 };
 const COUNTRY_CURRENCY = { MY: 'MYR', SG: 'SGD', UAE: 'AED' };
 
+function validateToken_(token) {
+  if (!token) return false;
+  try {
+    const parts = token.split('.');
+    if (parts.length !== 3) return false;
+    let b64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+    while (b64.length % 4) b64 += '=';
+    const payload = JSON.parse(
+      Utilities.newBlob(Utilities.base64Decode(b64)).getDataAsString()
+    );
+    return payload.hd === 'ksisters.sg' && payload.exp * 1000 > Date.now();
+  } catch(e) { return false; }
+}
+
 function doGet(e) {
+  const tok = e && e.parameter ? e.parameter.token : null;
+  if (!validateToken_(tok)) {
+    return ContentService.createTextOutput(JSON.stringify({error:'Unauthorized',success:false}))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
   if (e && e.parameter && e.parameter.debug === '1') return debugFiles();
   if (e && e.parameter && e.parameter.country) return doGetCountry(e);
 

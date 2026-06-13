@@ -6,6 +6,7 @@
 <title>JungBeauty Store Dashboard — Amazon US</title>
 <link rel="stylesheet" href="amazon_dashboard.css">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
+<script src="https://accounts.google.com/gsi/client" async></script>
 <style>
 /* store-specific overrides — 공용 디자인은 amazon_dashboard.css 사용 */
 #dashboard{display:flex}
@@ -41,6 +42,7 @@
 </style>
 </head>
 <body>
+<script>(function(){function pj(t){try{let b=t.split('.')[1].replace(/-/g,'+').replace(/_/g,'/');while(b.length%4)b+='=';return JSON.parse(atob(b));}catch(e){return null;}}const t=sessionStorage.getItem('jb_auth'),p=t&&pj(t);if(!p||p.hd!=='ksisters.sg'||p.exp*1000<=Date.now()+30000)location.href='amazon_dashboard.html';})();</script>
 
 <div id="dashboard">
   <div class="sidebar" id="sidebar"></div>

@@ -7,9 +7,19 @@
 <link rel="stylesheet" href="amazon_dashboard.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script src="https://accounts.google.com/gsi/client" async></script>
 </head>
 <body>
 <div class="loading" id="loading"><div class="spinner"></div><p style="color:var(--muted);font-size:12px">...</p></div>
+
+<!-- AUTH -->
+<div id="auth-screen" style="display:none;position:fixed;inset:0;z-index:9999;background:var(--bg);flex-direction:column;align-items:center;justify-content:center;gap:20px">
+  <div style="font-size:40px">📊</div>
+  <div style="font-size:22px;font-weight:700;color:var(--text)">JungBeauty Dashboard</div>
+  <div style="font-size:13px;color:var(--muted);margin-bottom:4px">@ksisters.sg 계정으로 로그인해 주세요</div>
+  <div id="g-signin-btn"></div>
+  <div id="auth-error" style="display:none;color:#e74c3c;font-size:12px;margin-top:4px"></div>
+</div>
 
 <!-- UPLOAD -->
 <div id="upload-screen" style="display:none">
