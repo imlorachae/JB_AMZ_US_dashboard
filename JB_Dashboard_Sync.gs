@@ -432,8 +432,8 @@ function doGetCountry(e) {
     ).setMimeType(ContentService.MimeType.JSON);
   }
 
-  const cacheModKey  = 'cachev11_' + key + '_mod';
-  const cacheDataKey = 'cachev11_' + key + '_data';
+  const cacheModKey  = 'cachev12' + key + '_mod';
+  const cacheDataKey = 'cachev12_' + key + '_data';
   const props = PropertiesService.getScriptProperties();
 
   try {
