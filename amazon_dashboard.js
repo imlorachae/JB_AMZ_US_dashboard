@@ -463,7 +463,7 @@ function renderSidebar(){
     let chItems='';
     if(isExp){
       chItems=chs.map(ch=>{
-        const chActive=isActive&&ch.id===activeChannel;
+        const chActive=isActive&&(ch.id===activeChannel||(ch.pairAds&&ch.pairAds===activeChannel));
         let modeItems='';
         if(chActive){
           if(c==='US'){
@@ -472,6 +472,11 @@ function renderSidebar(){
               `<button class="sidebar-mode${appMode==='ads'?' active':''}" onclick="setMode('ads')">📢 <span>${isKo()?'광고':'Ads'}</span></button>`;
             if(ch.id==='AMZ')
               modeItems+=`<button class="sidebar-mode" onclick="location.href='store_dashboard.html'">🛍 <span>${isKo()?'스토어':'Store'}</span></button>`;
+          } else if(ch.pairAds) {
+            const curIsAds=activeChannel===ch.pairAds;
+            const adsLabel=CHANNEL_LABELS[ch.pairAds]||ch.pairAds;
+            modeItems+=`<button class="sidebar-mode${!curIsAds?' active':''}" onclick="setCountryChannel('${c}','${ch.id}')">💰 <span>${isKo()?'매출':'Sales'}</span></button>`;
+            modeItems+=`<button class="sidebar-mode${curIsAds?' active':''}" onclick="setCountryChannel('${c}','${ch.pairAds}')">📢 <span>${adsLabel}</span></button>`;
           }
         }
         return `<button class="sidebar-channel${chActive?' active':''}" onclick="setCountryChannel('${c}','${ch.id}')">${ch.label}</button>${modeItems}`;
@@ -3245,8 +3250,9 @@ window.addEventListener('DOMContentLoaded', () => {
 
 // ──── MULTI-COUNTRY / CHANNEL ─────────────────────────────────────
 const COUNTRY_CHANNELS = {
-  SG:  [{id:'Shopify',label:'Shopify'},{id:'Shopee',label:'Shopee'},
-        {id:'TikTok',label:'TikTok'},{id:'FBAds',label:'FB Ads'}],
+  SG:  [{id:'Shopify',label:'Shopify',pairAds:'FBAds'},
+        {id:'Shopee',label:'Shopee'},
+        {id:'TikTok',label:'TikTok'}],
   MY:  [{id:'Shopify',label:'Shopify'},{id:'Shopee',label:'Shopee'},
         {id:'TikTok',label:'TikTok'},{id:'TikTokAds',label:'TikTok Ads'}],
   US:  [{id:'AMZ',label:'Amazon'}],
@@ -3300,7 +3306,7 @@ async function syncCountryData(country, channel) {
     if(!res.ok) throw new Error('HTTP '+res.status);
     const json = await res.json();
     if(json.success && json.data){
-      mysgCache[key]={data:json.data, currency:json.currency||'USD', channel};
+      mysgCache[key]={data:json.data, currency:json.currency||'USD', channel, products:json.products||null};
       return mysgCache[key];
     }
     return null;
@@ -3437,6 +3443,42 @@ function renderMysg(cached) {
         }).join('')}
       </tbody>
     </table></div>`;
+  }
+
+  // Monthly best products TOP 5
+  if(ss && cached && cached.products && cached.products.length) {
+    const byMonth={};
+    cached.products.forEach(p=>{
+      const k=p.yr+'.'+p.mo;
+      if(!byMonth[k]) byMonth[k]=[];
+      byMonth[k].push(p);
+    });
+    const sortedMonths=Object.keys(byMonth).sort((a,b)=>{
+      const [ay,am]=a.split('.').map(Number);
+      const [by,bm]=b.split('.').map(Number);
+      return ay*12+am-(by*12+bm);
+    });
+    let prodHtml=`<div class="section-title" style="margin-top:28px">${isKo()?'월별 베스트 상품 TOP 5':'Monthly Best Products TOP 5'}</div>`;
+    sortedMonths.forEach(k=>{
+      const [yr,mo]=k.split('.');
+      const top5=[...byMonth[k]].sort((a,b)=>(b.qty||0)-(a.qty||0)).slice(0,5);
+      prodHtml+=`<div style="margin:16px 0 6px;font-weight:600;font-size:13px">${yr} ${MO_LABELS[mo-1]}</div>
+      <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:13px">
+        <thead><tr style="border-bottom:2px solid var(--border)">
+          <th style="text-align:left;padding:6px 12px;color:var(--muted);font-weight:600;width:50px">#</th>
+          <th style="text-align:left;padding:6px 12px;color:var(--muted);font-weight:600">${isKo()?'상품명':'Product'}</th>
+          <th style="text-align:right;padding:6px 12px;color:var(--muted);font-weight:600">${isKo()?'판매수량':'Qty'}</th>
+          <th style="text-align:right;padding:6px 12px;color:var(--muted);font-weight:600">${isKo()?'매출':'Sales'}</th>
+        </tr></thead>
+        <tbody>${top5.map((p,i)=>`<tr style="border-bottom:1px solid var(--border)">
+          <td style="padding:6px 12px;color:var(--muted);font-size:11px">${i+1}</td>
+          <td style="padding:6px 12px">${p.name||'-'}</td>
+          <td style="text-align:right;padding:6px 12px;font-weight:600">${fmtN(p.qty||0)}</td>
+          <td style="text-align:right;padding:6px 12px;color:var(--muted)">${fmtM(p.sales||0)}</td>
+        </tr>`).join('')}</tbody>
+      </table></div>`;
+    });
+    ss.innerHTML+=prodHtml;
   }
 }
 
