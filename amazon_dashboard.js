@@ -29,7 +29,7 @@ let kwSortCol='sales', kwSortDir=-1;
 // ── Multi-country state ───────────────────────────────────────────
 let activeCountry='US', activeChannel='AMZ';
 const mysgCache={};
-let sidebarExpanded={US:true,MY:false,SG:false,UAE:false};
+let sidebarExpanded={SG:false,MY:false,US:true,UAE:false};
 let trendCI=null;
 let _gwCache=null; // global week list cache
 let rangeFrom='', rangeTo='';
@@ -472,12 +472,6 @@ function renderSidebar(){
               `<button class="sidebar-mode${appMode==='ads'?' active':''}" onclick="setMode('ads')">📢 <span>${isKo()?'광고':'Ads'}</span></button>`;
             if(ch.id==='AMZ')
               modeItems+=`<button class="sidebar-mode" onclick="location.href='store_dashboard.html'">🛍 <span>${isKo()?'스토어':'Store'}</span></button>`;
-          } else {
-            const salesCh=(COUNTRY_CHANNELS[c]||[]).find(x=>!x.id.includes('Ads'));
-            const adsCh=(COUNTRY_CHANNELS[c]||[]).find(x=>x.id.includes('Ads'));
-            const curIsAds=activeChannel.includes('Ads');
-            if(salesCh) modeItems+=`<button class="sidebar-mode${!curIsAds?' active':''}" onclick="setCountryChannel('${c}','${salesCh.id}')">💰 <span>${isKo()?'매출':'Sales'}</span></button>`;
-            if(adsCh)   modeItems+=`<button class="sidebar-mode${curIsAds?' active':''}" onclick="setCountryChannel('${c}','${adsCh.id}')">📢 <span>${isKo()?'광고':'Ads'}</span></button>`;
           }
         }
         return `<button class="sidebar-channel${chActive?' active':''}" onclick="setCountryChannel('${c}','${ch.id}')">${ch.label}</button>${modeItems}`;
@@ -494,7 +488,7 @@ function renderSidebar(){
     '<div class="sidebar-divider"></div>'+
     `<button class="sidebar-btn${appMode==='settings'?' active':''}" onclick="setMode('settings')"><span class="ic">⚙️</span><span>${isKo()?'설정':'Settings'}</span></button>`+
     '<div class="sidebar-spacer"></div>'+
-    `<div class="sidebar-foot">${COUNTRY_FLAGS[activeCountry]} ${activeCountry} · ${CHANNEL_LABELS[activeChannel]||activeChannel}</div>`;
+    `<div class="sidebar-foot">${COUNTRY_FLAGS[activeCountry]} ${activeCountry} · ${activeChannel==='ALL'?'All Channels':(CHANNEL_LABELS[activeChannel]||activeChannel)}</div>`;
 }
 // ──── CONSOLIDATED OVERVIEW (전 국가 통합 대시보드) ────────────────
 let ovBarCI=null, ovDonutCI=null, _ovToken=0;
@@ -3251,11 +3245,11 @@ window.addEventListener('DOMContentLoaded', () => {
 
 // ──── MULTI-COUNTRY / CHANNEL ─────────────────────────────────────
 const COUNTRY_CHANNELS = {
-  US:  [{id:'AMZ',label:'Amazon'}],
-  MY:  [{id:'Shopify',label:'Shopify'},{id:'Shopee',label:'Shopee'},
-        {id:'TikTok',label:'TikTok'},{id:'TikTokAds',label:'TikTok Ads'}],
   SG:  [{id:'Shopify',label:'Shopify'},{id:'Shopee',label:'Shopee'},
         {id:'TikTok',label:'TikTok'},{id:'FBAds',label:'FB Ads'}],
+  MY:  [{id:'Shopify',label:'Shopify'},{id:'Shopee',label:'Shopee'},
+        {id:'TikTok',label:'TikTok'},{id:'TikTokAds',label:'TikTok Ads'}],
+  US:  [{id:'AMZ',label:'Amazon'}],
   UAE: [{id:'AMZ',label:'Amazon'}],
 };
 const CHANNEL_LABELS = {
@@ -3268,12 +3262,20 @@ function toggleCountry(country) {
   const wasExp = sidebarExpanded[country];
   Object.keys(sidebarExpanded).forEach(c => sidebarExpanded[c]=false);
   if (wasExp && activeCountry===country) {
-    // already active+expanded → just collapse, stay on same view
     renderSidebar(); return;
   }
   sidebarExpanded[country]=true;
-  const firstCh=(COUNTRY_CHANNELS[country]||[])[0]?.id||'AMZ';
-  setCountryChannel(country, firstCh);
+  activeCountry=country;
+  if(country==='US') {
+    activeChannel='AMZ';
+    if(appMode==='consolidated'||appMode==='settings') appMode='sales';
+    renderSidebar();
+    render();
+  } else {
+    activeChannel='ALL';
+    renderSidebar();
+    loadAndRenderCountryAggregate(country);
+  }
 }
 
 function setCountryChannel(country, channel) {
@@ -3308,6 +3310,33 @@ async function syncCountryData(country, channel) {
   }
 }
 
+async function loadAndRenderCountryAggregate(country) {
+  const badge=document.getElementById('topbar-badge');
+  if(badge) badge.textContent=COUNTRY_FLAGS[country]+' '+country+' · All Channels';
+  const kr=document.getElementById('kpi-row1');
+  if(kr) kr.innerHTML='<div style="color:var(--muted);font-size:13px;padding:20px 0">Loading...</div>';
+  const cg=document.getElementById('charts-grid'); if(cg) cg.style.display='none';
+
+  const salesChs=(COUNTRY_CHANNELS[country]||[]).filter(ch=>!ch.id.includes('Ads'));
+  const results=await Promise.all(salesChs.map(ch=>syncCountryData(country,ch.id)));
+
+  const merged={};
+  let currency='USD';
+  results.forEach(cached=>{
+    if(!cached||!cached.data) return;
+    currency=cached.currency;
+    cached.data.forEach(d=>{
+      const k=d.yr+'.'+d.mo;
+      if(!merged[k]) merged[k]={yr:d.yr,mo:d.mo,sales:0,orders:0};
+      merged[k].sales+=(d.sales||0);
+      merged[k].orders+=(d.orders||0);
+    });
+  });
+
+  const data=Object.values(merged).sort((a,b)=>a.yr*12+a.mo-(b.yr*12+b.mo));
+  renderMysg(data.length?{data,currency,channel:'ALL'}:null);
+}
+
 async function loadAndRenderMysg(country, channel) {
   const badge=document.getElementById('topbar-badge');
   if(badge) badge.textContent=country+' · '+(CHANNEL_LABELS[channel]||channel);
@@ -3333,7 +3362,7 @@ function renderMysg(cached) {
   });
 
   const badge=document.getElementById('topbar-badge');
-  if(badge) badge.textContent=activeCountry+' · '+(CHANNEL_LABELS[activeChannel]||activeChannel);
+  if(badge) badge.textContent=activeCountry+' · '+(activeChannel==='ALL'?'All Channels':(CHANNEL_LABELS[activeChannel]||activeChannel));
 
   if(!cached||!cached.data||!cached.data.length){
     const kr=document.getElementById('kpi-row1');
@@ -3377,7 +3406,8 @@ function renderMysg(cached) {
   if(cg){cg.style.display='';cg.style.gridTemplateColumns='1fr';}
   const mw=document.getElementById('mainChart-wrap'); if(mw) mw.style.height='340px';
   const title=document.getElementById('chart-main-title');
-  if(title) title.textContent=(CHANNEL_LABELS[activeChannel]||activeChannel)+' '+(isAds?'광고비':'매출')+' 월별';
+  const _chLabel=activeChannel==='ALL'?'All Channels':(CHANNEL_LABELS[activeChannel]||activeChannel);
+  if(title) title.textContent=_chLabel+' '+(isAds?'광고비':'매출')+' 월별';
   // Hide mix button (no mix for monthly)
   const ctmix=document.getElementById('ct-mix'); if(ctmix) ctmix.style.display='none';
 
