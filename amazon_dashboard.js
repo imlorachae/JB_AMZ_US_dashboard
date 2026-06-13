@@ -1830,15 +1830,16 @@ function dailyRowsHTML(rows,rate,cur){
   rows.forEach(r=>{
     const ua=vineMode==='exclude';
     const aS=ua?r.sales+(r.vine_adj||0):r.sales, aO=ua?r.organic+(r.vine_adj||0):r.organic;
+    const salesPending=r.sales===0&&r.adSales>0;
     const totalRoas=r.adSpend>0?r.sales/r.adSpend:0, totalAcos=r.sales>0?r.adSpend/r.sales*100:0;
     const adRoas=r.adSpend>0?r.adSales/r.adSpend:0, adAcos=r.adSales>0?r.adSpend/r.adSales*100:0;
     const dk=dowName(r.dow);
     const isSun=['일','Sun'].includes(dk), isSat=['토','Sat'].includes(dk);
     const evt=SPECIAL_EVENTS.find(e=>e.yr===r.yr&&e.mo===r.mo&&r.day>=e.day_start&&r.day<=e.day_end);
-    const rc=totalRoas>=2?'pos':totalRoas>=1?'':totalRoas>0?'neg':'dim';
+    const rc=salesPending?'dim':totalRoas>=2?'pos':totalRoas>=1?'':totalRoas>0?'neg':'dim';
     const ac=totalAcos>0&&totalAcos<50?'pos':totalAcos<80?'':totalAcos>0?'neg':'dim';
     const tag=evt?` <span style="font-size:9px;color:#fb923c;border:1px solid rgba(251,146,60,.5);border-radius:3px;padding:0 3px">⚠️ ${T('idVerify')}</span>`:'';
-    html+=`<tr style="${evt?'background:rgba(251,146,60,.06)':''}"><td class="col-date">${r.mo}/${r.day}${tag}</td><td class="col-dow" style="text-align:center;color:${isSun?'var(--red)':isSat?'#2563eb':'var(--muted)'}">${dk}</td><td style="font-weight:600;color:${aS<0?'var(--red)':'#1d4ed8'}">${fmtAgg(aS,rate.krw,rate.sgd)}</td><td style="color:${aO<0?'var(--red)':''}">${fmtAgg(aO,rate.krw,rate.sgd)}</td><td style="color:${r.adSales<0?'var(--red)':''}">${fmtAgg(r.adSales,rate.krw,rate.sgd)}</td><td style="color:${r.adSpend>0?'var(--text)':'var(--muted)'}">${fmtAgg(r.adSpend,rate.krw,rate.sgd)}</td><td class="${rc}">${fmtRoas(totalRoas)}</td><td class="${ac}">${totalAcos>0?fmtAcos(totalAcos):'—'}</td><td>${adRoas>0?fmtRoas(adRoas):'—'}</td><td>${adAcos>0?fmtAcos(adAcos):'—'}</td><td>${fmtN(r.orders)}</td><td>${fmtN(r.sessions)}</td></tr>`;
+    html+=`<tr style="${evt?'background:rgba(251,146,60,.06)':''}"><td class="col-date">${r.mo}/${r.day}${tag}</td><td class="col-dow" style="text-align:center;color:${isSun?'var(--red)':isSat?'#2563eb':'var(--muted)'}">${dk}</td><td style="font-weight:600;color:${aS<0?'var(--red)':'#1d4ed8'}">${fmtAgg(aS,rate.krw,rate.sgd)}</td><td style="color:${aO<0?'var(--red)':''}">${fmtAgg(aO,rate.krw,rate.sgd)}</td><td style="color:${r.adSales<0?'var(--red)':''}">${fmtAgg(r.adSales,rate.krw,rate.sgd)}</td><td style="color:${r.adSpend>0?'var(--text)':'var(--muted)'}">${fmtAgg(r.adSpend,rate.krw,rate.sgd)}</td><td class="${rc}">${salesPending?'—':fmtRoas(totalRoas)}</td><td class="${ac}">${totalAcos>0?fmtAcos(totalAcos):'—'}</td><td>${adRoas>0?fmtRoas(adRoas):'—'}</td><td>${adAcos>0?fmtAcos(adAcos):'—'}</td><td>${fmtN(r.orders)}</td><td>${fmtN(r.sessions)}</td></tr>`;
     if(vd.has(r.day)){VINE_ITEMS.filter(v=>v.yr===r.yr&&v.mo===r.mo&&v.day===r.day).forEach(v=>{html+=`<tr class="vine-row"><td colspan="10"><span class="vine-badge">🌿 VINE</span> ${v.desc} — ${fmtAgg(v.adj,rate.krw,rate.sgd)}</td></tr>`;});}
   });
   return html;
