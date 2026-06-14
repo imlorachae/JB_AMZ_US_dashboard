@@ -123,10 +123,8 @@ function doGet(e) {
           ok = true;
         } catch(err) { Logger.log('Sheets error: ' + name + ' - ' + err.message); }
       } else if (name.endsWith('.csv')) {
-        try {
-          parseAdsCsv(file.getBlob().getDataAsString('UTF-8'), fb);
-          ok = true;
-        } catch(err) { Logger.log('CSV error: ' + name + ' - ' + err.message); }
+        // 02_ads 폴더 CSV는 건너뜀 — xlsx만 사용
+        continue;
       } else if (name.endsWith('.xlsx') || name.endsWith('.xls')) {
         // 아직 변환 안 된 xlsx 폴백 처리 (신규 파일은 syncGmailToDrive에서 Sheets로 저장됨)
         let tmpId = null;
