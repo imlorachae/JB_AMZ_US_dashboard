@@ -62,11 +62,6 @@
     </div>
     <div class="topbar-right">
       <div class="mode-toggle" id="mode-toggle"></div>
-      <div class="tab-group" id="tab-group"></div>
-      <div class="currency-group" id="vine-group">
-        <button class="ct-btn" id="vine-inc" onclick="setVineMode('include')">Vine 포함</button>
-        <button class="ct-btn active" id="vine-exc" onclick="setVineMode('exclude')">Vine 제외</button>
-      </div>
       <div class="currency-group">
         <button class="cur-btn active" onclick="setCurrency('USD',this)">USD</button>
         <button class="cur-btn" onclick="setCurrency('SGD',this)">SGD</button>
@@ -82,17 +77,30 @@
   <div class="content">
     <!-- NAVBAR (item 1 + 6) -->
     <div class="navbar">
-      <div class="navbar-left">
-        <div class="year-tabs" id="year-tabs"></div>
-        <div class="unit-tabs" id="unit-tabs"></div>
+      <!-- Row 1: 탭 네비 + Vine | 기간 선택 -->
+      <div class="navbar-top">
+        <div class="navbar-top-left">
+          <div class="tab-group" id="tab-group"></div>
+          <div class="currency-group" id="vine-group">
+            <button class="ct-btn" id="vine-inc" onclick="setVineMode('include')">Vine 포함</button>
+            <button class="ct-btn active" id="vine-exc" onclick="setVineMode('exclude')">Vine 제외</button>
+          </div>
+        </div>
+        <div class="navbar-right">
+          <label id="rng-lbl">기간</label>
+          <input type="date" id="rng-from" style="background:var(--card2);border:1px solid var(--border);border-radius:6px;padding:4px 8px;color:var(--text);font-size:11px;outline:none;cursor:pointer">
+          <span style="color:var(--muted);font-size:11px">~</span>
+          <input type="date" id="rng-to" style="background:var(--card2);border:1px solid var(--border);border-radius:6px;padding:4px 8px;color:var(--text);font-size:11px;outline:none;cursor:pointer">
+          <button class="mini-btn" id="rng-apply" onclick="applyRange()">적용</button>
+          <button class="mini-btn ghost" id="rng-reset" onclick="resetRange()">초기화</button>
+        </div>
       </div>
-      <div class="navbar-right">
-        <label id="rng-lbl">기간</label>
-        <input type="date" id="rng-from" style="background:var(--card2);border:1px solid var(--border);border-radius:6px;padding:4px 8px;color:var(--text);font-size:11px;outline:none;cursor:pointer">
-        <span style="color:var(--muted);font-size:11px">~</span>
-        <input type="date" id="rng-to" style="background:var(--card2);border:1px solid var(--border);border-radius:6px;padding:4px 8px;color:var(--text);font-size:11px;outline:none;cursor:pointer">
-        <button class="mini-btn" id="rng-apply" onclick="applyRange()">적용</button>
-        <button class="mini-btn ghost" id="rng-reset" onclick="resetRange()">초기화</button>
+      <!-- Row 2: 연도 + 월 탭 -->
+      <div class="navbar-bottom">
+        <div class="navbar-left">
+          <div class="year-tabs" id="year-tabs"></div>
+          <div class="unit-tabs" id="unit-tabs"></div>
+        </div>
       </div>
     </div>
 

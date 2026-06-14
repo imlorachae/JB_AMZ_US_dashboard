@@ -86,8 +86,11 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,"Segoe UI"
 .content{padding:14px 20px;max-width:1440px;margin:0 auto;width:100%;box-sizing:border-box}
 
 /* NAVBAR (item 1+6) */
-.navbar{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:14px;flex-wrap:wrap;
+.navbar{display:flex;flex-direction:column;gap:0;margin-bottom:14px;
   background:var(--card);border:1px solid var(--border);border-radius:10px;padding:8px 12px}
+.navbar-top{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;padding-bottom:8px;border-bottom:1px solid var(--border);margin-bottom:8px}
+.navbar-top-left{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.navbar-bottom{display:flex;align-items:center}
 .navbar-left{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
 
 .year-tabs{display:flex;gap:3px;margin-right:8px;border-right:1px solid var(--border);padding-right:8px}
