@@ -3388,12 +3388,12 @@ async function loadAndRenderMysg(country, channel) {
 }
 
 function renderMysg(cached, adsCached) {
-  // View tabs: show with WEEKLY/DAILY disabled
+  // View tabs: ANNUAL/QUARTER/MONTHLY enabled; WEEKLY/DAILY disabled
   const nav=document.querySelector('.navbar'); if(nav) nav.style.display='';
   const tabGrp=document.getElementById('tab-group');
   if(tabGrp){
     tabGrp.style.display='';
-    const T_EN=['annual','monthly'];
+    const T_EN=['annual','quarter','monthly'];
     if(!T_EN.includes(activeTab)) activeTab='monthly';
     tabGrp.innerHTML=['annual','quarter','monthly','weekly','daily'].map(t=>{
       const en=T_EN.includes(t);
@@ -3403,7 +3403,6 @@ function renderMysg(cached, adsCached) {
   }
   const vineGrp=document.getElementById('vine-group'); if(vineGrp) vineGrp.style.display='none';
   const unitTbs=document.getElementById('unit-tabs'); if(unitTbs) unitTbs.style.display='none';
-  // Show date range placeholder (disabled)
   const navR=document.querySelector('.navbar-right');
   if(navR){navR.style.display='';navR.style.opacity='0.35';navR.style.pointerEvents='none';}
   ['week-nav-bar','review-section','daily-section','overview-section','settings-section','ratio-grid'].forEach(id=>{
@@ -3425,7 +3424,7 @@ function renderMysg(cached, adsCached) {
 
   const {data:allData, currency}=cached;
 
-  // Year tabs from this channel's data
+  // Year tabs
   const mysgYears=[...new Set(allData.map(d=>d.yr))].sort((a,b)=>a-b);
   if(!activeYear||!mysgYears.includes(activeYear)) activeYear=mysgYears[mysgYears.length-1];
   const yt=document.getElementById('year-tabs');
@@ -3433,17 +3432,15 @@ function renderMysg(cached, adsCached) {
 
   const data=allData.filter(d=>d.yr===activeYear);
 
-  // Ads data by month (FBAds is always USD)
+  // Ads data (FBAds = USD)
   const adsMap={};
   if(adsCached&&adsCached.data){
     adsCached.data.filter(d=>d.yr===activeYear).forEach(d=>{adsMap[d.mo]={adSpend:d.adSpend||0};});
   }
   const hasAds=!activeChannel.includes('Ads')&&Object.keys(adsMap).length>0;
-
   const isAds=activeChannel.includes('Ads');
   const sym=_ovSym();
 
-  // Native currency → activeCurrency
   const toActive=(val,yr,mo)=>{
     if(currency===activeCurrency) return val;
     let usd=val;
@@ -3454,13 +3451,13 @@ function renderMysg(cached, adsCached) {
     if(activeCurrency==='MYR') return usd*(MYR_RATES[yr+'.'+mo]||4.03);
     return usd;
   };
-  // Ads USD → activeCurrency
   const adsToActive=(val,yr,mo)=>{
     if(activeCurrency==='USD') return val;
     return val*getRate(yr,mo);
   };
   const fmtM=n=>sym+Math.round(n||0).toLocaleString('en-US');
 
+  // YTD totals (always shown in KPI row)
   const totalSales=data.reduce((s,d)=>s+toActive(isAds?(d.adSpend||0):(d.sales||0),d.yr,d.mo),0);
   const totalOrds=data.reduce((s,d)=>s+(isAds?(d.adOrders||0):(d.orders||0)),0);
   const avgOrd=totalOrds>0?totalSales/totalOrds:0;
@@ -3470,7 +3467,7 @@ function renderMysg(cached, adsCached) {
   const kpis=isAds
     ?[{label:isKo()?'총 광고비':'Total Ad Spend',value:fmtM(totalSales),sub:activeCurrency},
       {label:isKo()?'총 구매수':'Purchases',value:fmtN(totalOrds),sub:isKo()?'건':'orders'}]
-    :[{label:isKo()?'총 매출':'Total Sales',value:fmtM(totalSales),sub:activeCurrency},
+    :[{label:isKo()?'YTD 매출':'YTD Sales',value:fmtM(totalSales),sub:activeCurrency},
       {label:isKo()?'주문수':'Orders',value:fmtN(totalOrds),sub:isKo()?'건':'orders'},
       {label:isKo()?'평균 주문가':'Avg Order',value:fmtM(avgOrd),sub:activeCurrency},
       ...(hasAds?[
@@ -3487,56 +3484,162 @@ function renderMysg(cached, adsCached) {
       <div style="color:var(--muted);font-size:11px;margin-top:2px">${k.sub}</div>
     </div>`).join('');
 
-  const tb=document.getElementById('top-banner'); if(tb) tb.innerHTML='';
-
   const dc=document.getElementById('donut-card'); if(dc) dc.style.display='none';
   const cg=document.getElementById('charts-grid');
   if(cg){cg.style.display='';cg.style.gridTemplateColumns='1fr';}
   const mw=document.getElementById('mainChart-wrap'); if(mw) mw.style.height='340px';
-  const title=document.getElementById('chart-main-title');
-  const _chLabel=activeChannel==='ALL'?'All Channels':(CHANNEL_LABELS[activeChannel]||activeChannel);
-  if(title) title.textContent=_chLabel+' 월별'+(hasAds?' · 매출 vs 광고비':'');
   const ctmix=document.getElementById('ct-mix'); if(ctmix) ctmix.style.display='none';
-
-  const chartData=data.map(d=>({
-    ...d,
-    _val:toActive(isAds?(d.adSpend||0):(d.sales||0),d.yr,d.mo),
-    _adVal:hasAds&&adsMap[d.mo]?adsToActive(adsMap[d.mo].adSpend,d.yr,d.mo):null
-  }));
-  renderMysgChart(chartData, activeCurrency, isAds, sym, hasAds);
-
-  // Monthly detail table with ROAS
+  const tb=document.getElementById('top-banner');
   const ss=document.getElementById('summary-section');
-  if(ss){
-    ss.innerHTML=`<div class="section-title" style="margin-top:20px">${isKo()?'월별 상세':'Monthly Detail'}</div>
-    <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:13px">
-      <thead><tr style="border-bottom:2px solid var(--border)">
-        <th style="text-align:left;padding:8px 12px;color:var(--muted);font-weight:600">${isKo()?'월':'Month'}</th>
-        <th style="text-align:right;padding:8px 12px;color:var(--muted);font-weight:600">${isKo()?'매출':'Sales'}</th>
-        <th style="text-align:right;padding:8px 12px;color:var(--muted);font-weight:600">${isKo()?'주문수':'Orders'}</th>
-        ${hasAds?`<th style="text-align:right;padding:8px 12px;color:var(--muted);font-weight:600">${isKo()?'광고비':'Ad Spend'}</th>
-        <th style="text-align:right;padding:8px 12px;color:var(--muted);font-weight:600">ROAS</th>`:''}
-      </tr></thead>
-      <tbody>${data.map(d=>{
-        const val=toActive(d.sales||0,d.yr,d.mo);
-        const ads=hasAds&&adsMap[d.mo]?adsToActive(adsMap[d.mo].adSpend,d.yr,d.mo):null;
-        const r=ads&&ads>0?val/ads:null;
-        return `<tr style="border-bottom:1px solid var(--border)">
-          <td style="padding:8px 12px">${MO_LABELS[d.mo-1]}</td>
-          <td style="text-align:right;padding:8px 12px;font-weight:600">${fmtM(val)}</td>
-          <td style="text-align:right;padding:8px 12px">${fmtN(d.orders||0)}</td>
-          ${hasAds?`<td style="text-align:right;padding:8px 12px;color:var(--muted)">${ads!==null?fmtM(ads):'-'}</td>
-          <td style="text-align:right;padding:8px 12px;font-weight:600;color:${r&&r>=2?'#16a34a':r&&r<1?'#dc2626':'var(--text)'}">${r?r.toFixed(2)+'x':'-'}</td>`:''}
-        </tr>`;
-      }).join('')}</tbody>
-    </table></div>`;
-  }
+  const _chLabel=activeChannel==='ALL'?'All Channels':(CHANNEL_LABELS[activeChannel]||activeChannel);
+  const title=document.getElementById('chart-main-title');
 
-  // Products: flat annual list sorted by sales, names normalized
-  if(ss && cached.products && cached.products.length) {
-    ss.innerHTML+=`<div class="section-title" style="margin-top:28px">${isKo()?'베스트 상품 (연간)':'Best Products (Year)'}</div><div id="sg-prod-section"></div>`;
-    _prodSortCol='sales'; _prodSortDir=-1;
-    _renderSgProds(cached, activeYear, toActive);
+  // ── Forecast helpers ──────────────────────────────────────────────
+  const now=new Date(), nowYr=now.getFullYear(), nowMo=now.getMonth()+1, nowDay=now.getDate();
+  const dim=(y,m)=>new Date(y,m,0).getDate();
+  const isConf=(y,m)=>y<nowYr||(y===nowYr&&m<nowMo);
+  const isInProg=(y,m)=>y===nowYr&&m===nowMo;
+  const confData=data.filter(d=>!isAds&&isConf(d.yr,d.mo));
+  const confAvg=confData.length>0?confData.reduce((s,d)=>s+toActive(d.sales||0,d.yr,d.mo),0)/confData.length:totalSales/Math.max(1,data.length);
+  // Returns {proj, status} for a given month
+  const projM=(mo)=>{
+    const d=data.find(x=>x.mo===mo);
+    const actual=d?toActive(d.sales||0,d.yr,d.mo):0;
+    if(isConf(activeYear,mo)) return {proj:actual,actual,status:'conf'};
+    if(isInProg(activeYear,mo)){const p=actual/Math.max(1,nowDay)*dim(activeYear,mo);return {proj:p,actual,status:'prog'};}
+    return {proj:confAvg,actual:0,status:'future'};
+  };
+
+  // ── ANNUAL ───────────────────────────────────────────────────────
+  if(activeTab==='annual'){
+    let annProj=0;
+    for(let m=1;m<=12;m++) annProj+=projM(m).proj;
+
+    if(tb) tb.innerHTML=`<div class="banner-projected"><div>
+      <div class="banner-label">🎯 ${activeYear} ${isKo()?'연간 예상 매출':'Annual Projected Sales'}</div>
+      <div class="banner-value">${fmtM(annProj)}</div>
+      <div style="color:var(--muted);font-size:12px;margin-top:4px">${isKo()?'월평균':'Monthly avg'} ${fmtM(confAvg)} · ${isKo()?'확정':'Confirmed'} ${confData.length}${isKo()?'개월':'mo'}</div>
+    </div><div class="banner-right">
+      <div class="banner-month">${activeYear} YTD</div>
+      <div class="banner-days">${isKo()?'현재 매출':'Current'}: ${fmtM(totalSales)}</div>
+    </div></div>`;
+
+    if(title) title.textContent=_chLabel+' '+activeYear+' '+(isKo()?'월별 추이':'Monthly Trend');
+    const chartData=Array.from({length:12},(_,i)=>{const m=i+1,{proj,status}=projM(m);return {mo:m,yr:activeYear,_val:proj,_isProj:status!=='conf'};});
+    renderMysgChart(chartData, activeCurrency, false, sym, false, true);
+
+    if(ss){
+      ss.innerHTML=`<div class="section-title" style="margin-top:20px">${isKo()?'월별 예측':'Monthly Forecast'}</div>
+      <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:13px">
+        <thead><tr style="border-bottom:2px solid var(--border)">
+          <th style="text-align:left;padding:8px 12px;color:var(--muted);font-weight:600">${isKo()?'월':'Month'}</th>
+          <th style="text-align:right;padding:8px 12px;color:var(--muted);font-weight:600">${isKo()?'매출':'Sales'}</th>
+          <th style="text-align:right;padding:8px 12px;color:var(--muted);font-weight:600">${isKo()?'상태':'Status'}</th>
+        </tr></thead>
+        <tbody>${Array.from({length:12},(_,i)=>{
+          const m=i+1,{proj,status}=projM(m);
+          const stBadge=status==='conf'?`<span class="badge badge-up">${isKo()?'확정':'Confirmed'}</span>`
+            :status==='prog'?`<span class="badge badge-neu">${isKo()?'진행중':'In Progress'}</span>`
+            :`<span class="badge badge-neu" style="opacity:0.55">${isKo()?'예측':'Forecast'}</span>`;
+          return `<tr style="border-bottom:1px solid var(--border)">
+            <td style="padding:8px 12px${status==='conf'?'':';color:var(--muted)'}">${MO_LABELS[m-1]}</td>
+            <td style="text-align:right;padding:8px 12px;font-weight:600;color:${status==='conf'?'var(--text)':'#2563eb'}">${fmtM(proj)}</td>
+            <td style="text-align:right;padding:8px 12px">${stBadge}</td>
+          </tr>`;
+        }).join('')}</tbody>
+      </table></div>`;
+      if(cached.products&&cached.products.length){
+        ss.innerHTML+=`<div class="section-title" style="margin-top:28px">${isKo()?'베스트 상품 (연간)':'Best Products (Year)'}</div><div id="sg-prod-section"></div>`;
+        _prodSortCol='sales';_prodSortDir=-1;
+        _renderSgProds(cached,activeYear,toActive);
+      }
+    }
+
+  // ── QUARTER ──────────────────────────────────────────────────────
+  } else if(activeTab==='quarter'){
+    const quarters=[1,2,3,4].map(q=>{
+      const mos=[1+(q-1)*3,2+(q-1)*3,3+(q-1)*3];
+      const sales=mos.reduce((s,m)=>s+projM(m).proj,0);
+      const orders=mos.reduce((s,m)=>{const d=data.find(x=>x.mo===m);return s+(d?d.orders||0:0);},0);
+      const adSpend=hasAds?mos.reduce((s,m)=>s+(adsMap[m]?adsToActive(adsMap[m].adSpend,activeYear,m):0),0):0;
+      const allConf=mos.every(m=>isConf(activeYear,m));
+      const hasAnyData=mos.some(m=>!!data.find(x=>x.mo===m));
+      const status=!hasAnyData?'empty':allConf?'conf':'proj';
+      const qr=adSpend>0?sales/adSpend:0;
+      return {q,mos,sales,orders,adSpend,status,qr};
+    });
+
+    if(tb) tb.innerHTML=`<div class="quarter-cards">${quarters.map(q=>{
+      if(q.status==='empty') return `<div class="q-card"><div class="q-label">Q${q.q}</div><span class="q-status empty">—</span><div class="q-value dim">—</div></div>`;
+      if(q.status==='conf') return `<div class="q-card confirmed"><div class="q-label">Q${q.q}</div><span class="q-status confirmed">✅ ${isKo()?'확정':'Confirmed'}</span><div class="q-value">${fmtM(q.sales)}</div></div>`;
+      return `<div class="q-card projected"><div class="q-label">Q${q.q}</div><span class="q-status projected">🎯 ${isKo()?'예측':'Forecast'}</span><div class="q-value">${fmtM(q.sales)}</div></div>`;
+    }).join('')}</div>`;
+
+    if(title) title.textContent=_chLabel+' '+(isKo()?'분기별':'Quarterly');
+    const valid=quarters.filter(q=>q.status!=='empty');
+    renderMysgChartRaw(valid.map(q=>`Q${q.q}`),valid.map(q=>q.sales),valid.map(q=>q.status!=='conf'),sym,activeCurrency);
+
+    if(ss){
+      const thR='text-align:right;padding:8px 12px;color:var(--muted);font-weight:600';
+      ss.innerHTML=`<div class="section-title" style="margin-top:20px">${isKo()?'분기별 상세':'Quarterly Detail'}</div>
+      <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:13px">
+        <thead><tr style="border-bottom:2px solid var(--border)">
+          <th style="text-align:left;padding:8px 12px;color:var(--muted);font-weight:600">Q</th>
+          <th style="${thR}">${isKo()?'매출 (예측)':'Sales'}</th>
+          <th style="${thR}">${isKo()?'주문수':'Orders'}</th>
+          ${hasAds?`<th style="${thR}">${isKo()?'광고비':'Ad Spend'}</th><th style="${thR}">ROAS</th>`:''}
+          <th style="${thR}">${isKo()?'상태':'Status'}</th>
+        </tr></thead>
+        <tbody>${quarters.filter(q=>q.status!=='empty').map(q=>{
+          const badge=q.status==='conf'?`<span class="badge badge-up">${isKo()?'확정':'Confirmed'}</span>`:`<span class="badge badge-neu">${isKo()?'예측':'Forecast'}</span>`;
+          return `<tr style="border-bottom:1px solid var(--border)">
+            <td style="padding:8px 12px;font-weight:700">Q${q.q}</td>
+            <td style="text-align:right;padding:8px 12px;font-weight:700;color:#1d4ed8">${fmtM(q.sales)}</td>
+            <td style="text-align:right;padding:8px 12px">${fmtN(q.orders)}</td>
+            ${hasAds?`<td style="text-align:right;padding:8px 12px;color:var(--muted)">${q.adSpend>0?fmtM(q.adSpend):'-'}</td>
+            <td style="text-align:right;padding:8px 12px;font-weight:600;color:${q.qr>=2?'#16a34a':q.qr>0&&q.qr<1?'#dc2626':'var(--text)'}">${q.qr>0?q.qr.toFixed(2)+'x':'-'}</td>`:''}
+            <td style="text-align:right;padding:8px 12px">${badge}</td>
+          </tr>`;
+        }).join('')}</tbody>
+      </table></div>`;
+    }
+
+  // ── MONTHLY ──────────────────────────────────────────────────────
+  } else {
+    if(tb) tb.innerHTML='';
+    if(title) title.textContent=_chLabel+' 월별'+(hasAds?' · 매출 vs 광고비':'');
+    const chartData=data.map(d=>({...d,_val:toActive(isAds?(d.adSpend||0):(d.sales||0),d.yr,d.mo),_adVal:hasAds&&adsMap[d.mo]?adsToActive(adsMap[d.mo].adSpend,d.yr,d.mo):null}));
+    renderMysgChart(chartData, activeCurrency, isAds, sym, hasAds);
+
+    if(ss){
+      ss.innerHTML=`<div class="section-title" style="margin-top:20px">${isKo()?'월별 상세':'Monthly Detail'}</div>
+      <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:13px">
+        <thead><tr style="border-bottom:2px solid var(--border)">
+          <th style="text-align:left;padding:8px 12px;color:var(--muted);font-weight:600">${isKo()?'월':'Month'}</th>
+          <th style="text-align:right;padding:8px 12px;color:var(--muted);font-weight:600">${isKo()?'매출':'Sales'}</th>
+          <th style="text-align:right;padding:8px 12px;color:var(--muted);font-weight:600">${isKo()?'주문수':'Orders'}</th>
+          ${hasAds?`<th style="text-align:right;padding:8px 12px;color:var(--muted);font-weight:600">${isKo()?'광고비':'Ad Spend'}</th>
+          <th style="text-align:right;padding:8px 12px;color:var(--muted);font-weight:600">ROAS</th>`:''}
+        </tr></thead>
+        <tbody>${data.map(d=>{
+          const val=toActive(d.sales||0,d.yr,d.mo);
+          const ads=hasAds&&adsMap[d.mo]?adsToActive(adsMap[d.mo].adSpend,d.yr,d.mo):null;
+          const r=ads&&ads>0?val/ads:null;
+          return `<tr style="border-bottom:1px solid var(--border)">
+            <td style="padding:8px 12px">${MO_LABELS[d.mo-1]}</td>
+            <td style="text-align:right;padding:8px 12px;font-weight:600">${fmtM(val)}</td>
+            <td style="text-align:right;padding:8px 12px">${fmtN(d.orders||0)}</td>
+            ${hasAds?`<td style="text-align:right;padding:8px 12px;color:var(--muted)">${ads!==null?fmtM(ads):'-'}</td>
+            <td style="text-align:right;padding:8px 12px;font-weight:600;color:${r&&r>=2?'#16a34a':r&&r<1?'#dc2626':'var(--text)'}">${r?r.toFixed(2)+'x':'-'}</td>`:''}
+          </tr>`;
+        }).join('')}</tbody>
+      </table></div>`;
+      if(cached.products&&cached.products.length){
+        ss.innerHTML+=`<div class="section-title" style="margin-top:28px">${isKo()?'베스트 상품 (연간)':'Best Products (Year)'}</div><div id="sg-prod-section"></div>`;
+        _prodSortCol='sales';_prodSortDir=-1;
+        _renderSgProds(cached,activeYear,toActive);
+      }
+    }
   }
 }
 
@@ -3608,7 +3711,7 @@ window._sortProds=function(col){
   _renderSgProds(_cachedSgProds);
 };
 
-function renderMysgChart(data, currency, isAds, sym, hasAds) {
+function renderMysgChart(data, currency, isAds, sym, hasAds, showProj) {
   const labels = data.map(d=>MO_LABELS[d.mo-1]);
   const values = data.map(d=>d._val!==undefined?d._val:(isAds?(d.adSpend||0):(d.sales||0)));
   const isLine = chartType==='line';
@@ -3616,11 +3719,18 @@ function renderMysgChart(data, currency, isAds, sym, hasAds) {
   if(mainCI) mainCI.destroy();
   if(donutCI){donutCI.destroy();donutCI=null;}
 
+  const bgMain = showProj
+    ? values.map((_,i)=>data[i]._isProj?'rgba(37,99,235,0.28)':'rgba(37,99,235,0.82)')
+    : (isLine?'rgba(37,99,235,0.12)':'rgba(37,99,235,0.82)');
+  const bdMain = showProj
+    ? values.map((_,i)=>data[i]._isProj?'rgba(37,99,235,0.45)':'#2563eb')
+    : '#2563eb';
+
   const datasets=[{
     label:(isAds?'Ad Spend':'Sales')+' ('+currency+')',
     data: values,
-    backgroundColor: isLine?'rgba(37,99,235,0.12)':'rgba(37,99,235,0.82)',
-    borderColor:'#2563eb',
+    backgroundColor: bgMain,
+    borderColor: bdMain,
     borderWidth: isLine?2:0,
     borderRadius: isLine?0:6,
     fill: isLine,
@@ -3657,6 +3767,39 @@ function renderMysgChart(data, currency, isAds, sym, hasAds) {
         x:{grid:{display:false},ticks:{color:'var(--muted)',font:{size:11}}},
         y:{grid:{color:'rgba(0,0,0,.04)'},ticks:{color:'var(--muted)',font:{size:11},
             callback:v=>sym+Math.round(v).toLocaleString('en-US')}}
+      }
+    }
+  });
+}
+
+function renderMysgChartRaw(labels, values, isProjected, sym, currency) {
+  if(mainCI) mainCI.destroy();
+  if(donutCI){donutCI.destroy();donutCI=null;}
+  const isLine=chartType==='line';
+  mainCI=new Chart(document.getElementById('mainChart').getContext('2d'),{
+    type:isLine?'line':'bar',
+    data:{
+      labels,
+      datasets:[{
+        label:'Sales ('+currency+')',
+        data:values,
+        backgroundColor:values.map((_,i)=>isProjected[i]?'rgba(37,99,235,0.28)':'rgba(37,99,235,0.82)'),
+        borderColor:values.map((_,i)=>isProjected[i]?'rgba(37,99,235,0.45)':'#2563eb'),
+        borderWidth:isLine?2:0,
+        borderRadius:isLine?0:8,
+        fill:isLine,
+        tension:0.35,
+      }]
+    },
+    options:{
+      responsive:true,maintainAspectRatio:false,
+      plugins:{
+        legend:{display:false},
+        tooltip:{callbacks:{label:ctx=>sym+Math.round(ctx.parsed.y).toLocaleString('en-US')+' '+currency}}
+      },
+      scales:{
+        x:{grid:{display:false},ticks:{color:'var(--muted)',font:{size:12,weight:'600'}}},
+        y:{grid:{color:'rgba(0,0,0,.04)'},ticks:{color:'var(--muted)',font:{size:11},callback:v=>sym+Math.round(v).toLocaleString('en-US')}}
       }
     }
   });
