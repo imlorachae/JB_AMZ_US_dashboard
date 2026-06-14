@@ -105,10 +105,8 @@ function doGet(e) {
       const fb = {};
       let ok = false;
 
-      if (name.endsWith('.csv')) {
-        parseAdsCsv(file.getBlob().getDataAsString('UTF-8'), fb);
-        ok = true;
-      } else if (mime === MimeType.GOOGLE_SHEETS) {
+      if (mime === MimeType.GOOGLE_SHEETS) {
+        // MIME 타입 우선 체크 — .csv 확장자라도 Google Sheets이면 SpreadsheetApp으로 읽어야 함
         try {
           const ss = SpreadsheetApp.openById(file.getId());
           const sheet = ss.getSheets()[0];
@@ -117,6 +115,11 @@ function doGet(e) {
           parseAdsValues(values, fb);
           ok = true;
         } catch(err) { Logger.log('Sheets error: ' + name + ' - ' + err.message); }
+      } else if (name.endsWith('.csv')) {
+        try {
+          parseAdsCsv(file.getBlob().getDataAsString('UTF-8'), fb);
+          ok = true;
+        } catch(err) { Logger.log('CSV error: ' + name + ' - ' + err.message); }
       } else if (name.endsWith('.xlsx') || name.endsWith('.xls')) {
         // 아직 변환 안 된 xlsx 폴백 처리 (신규 파일은 syncGmailToDrive에서 Sheets로 저장됨)
         let tmpId = null;
