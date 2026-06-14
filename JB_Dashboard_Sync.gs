@@ -557,8 +557,8 @@ function doGetCountry(e) {
     ).setMimeType(ContentService.MimeType.JSON);
   }
 
-  const cacheModKey  = 'cachev12' + key + '_mod';
-  const cacheDataKey = 'cachev12_' + key + '_data';
+  const cacheModKey  = 'cachev13' + key + '_mod';
+  const cacheDataKey = 'cachev13_' + key + '_data';
   const props = PropertiesService.getScriptProperties();
 
   try {
@@ -613,7 +613,7 @@ function doGetCountry(e) {
       const parts = k.split('_');
       const yr = parseInt(parts[0]), mo = parseInt(parts[1]);
       Object.values(byMoProd[k])
-        .sort(function(a,b){ return (b.qty||0)-(a.qty||0); })
+        .sort(function(a,b){ return (b.qty||0)-(a.qty||0) || (b.sales||0)-(a.sales||0); })
         .slice(0, 20)
         .forEach(function(p) {
           allProducts.push({yr:yr, mo:mo, name:p.name, qty:Math.round(p.qty), sales:Math.round(p.sales*100)/100});
@@ -747,8 +747,11 @@ function parseShopifyCsvMonthly(text, ym, filterJB) {
   const headers  = parseCsvLine(lines[0]).map(h => h.replace(/^"|"$/g,'').trim().toLowerCase());
   const vendorIdx   = headers.findIndex(h => h.includes('vendor'));
   const netSalesIdx = headers.findIndex(h => h === 'net sales' || h.includes('net sales'));
-  const ordersIdx   = headers.findIndex(h => h === 'orders' || h === 'net items sold');
-  const nameIdx     = headers.findIndex(h => h === 'product' || h.includes('product title') || h === 'title');
+  const ordersIdx   = headers.findIndex(h =>
+    h === 'orders' || h === 'net items sold' || h === 'net quantity' || h === 'quantity sold' ||
+    h === 'units sold' || h === 'qty sold' || (h === 'quantity' && !h.includes('return')));
+  const nameIdx     = headers.findIndex(h =>
+    h === 'product' || h.includes('product title') || h === 'title' || h === 'product name' || h.includes('item name'));
   if (netSalesIdx < 0) { Logger.log('Shopify: no net sales col. headers: ' + headers.join('|')); return null; }
 
   let totalSales = 0, totalOrders = 0;
@@ -861,9 +864,14 @@ function parseTikTokSalesXlsx(values, ym, filterJB) {
     h === 'gmv' || h.includes('revenue') || h.includes('sales amount') ||
     h.includes('total amount') || h.includes('product amount') || h.includes('order amount'));
   const ordersIdx = headers.findIndex(h =>
-    h === 'orders' || h === 'sku orders' ||
+    h === 'orders' || h === 'sku orders' || h === 'units sold' || h === 'qty sold' ||
+    h === 'quantity sold' || h === 'units' || h === 'quantity' ||
+    (h.includes('unit') && h.includes('sold')) ||
+    (h.includes('qty') && !h.includes('price') && !h.includes('amount')) ||
     (h.includes('order') && !h.includes('cancel') && !h.includes('return') && !h.includes('amount') && !h.includes('rate')));
-  const nameIdx = headers.findIndex(h => h === 'product' || h.includes('product name'));
+  const nameIdx = headers.findIndex(h =>
+    h === 'product' || h.includes('product name') || h.includes('product title') ||
+    h === 'item name' || h.includes('item name') || h === 'product name');
 
   if (gmvIdx < 0) { Logger.log('TikTok Sales: no GMV col'); return null; }
 
