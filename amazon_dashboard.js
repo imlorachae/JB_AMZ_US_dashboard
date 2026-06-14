@@ -1149,7 +1149,12 @@ function render(){
     else { _hideAllSections('settings-section'); renderSettingsPlaceholder(); }
     return;
   }
-  if(activeCountry!=='US'){ renderMysg(mysgCache[activeCountry+'_'+activeChannel]); return; }
+  if(activeCountry!=='US'){
+    const _chDef=(COUNTRY_CHANNELS[activeCountry]||[]).find(c=>c.id===activeChannel);
+    const _pairId=_chDef&&_chDef.pairAds;
+    renderMysg(mysgCache[activeCountry+'_'+activeChannel], _pairId?mysgCache[activeCountry+'_'+_pairId]:null);
+    return;
+  }
   // US 진입 시 SG/MY/UAE가 숨긴 요소 복원
   {const _tg=document.getElementById('tab-group');if(_tg)_tg.style.display='';}
   {const _ut=document.getElementById('unit-tabs');if(_ut)_ut.style.display='';}
@@ -3368,23 +3373,39 @@ async function loadAndRenderMysg(country, channel) {
   const badge=document.getElementById('topbar-badge');
   if(badge) badge.textContent=country+' · '+(CHANNEL_LABELS[channel]||channel);
 
-  // Show loading placeholder
   const kr=document.getElementById('kpi-row1');
   if(kr) kr.innerHTML='<div style="color:var(--muted);font-size:13px;padding:20px 0">Loading...</div>';
-  // Hide charts while loading
   const cg=document.getElementById('charts-grid'); if(cg) cg.style.display='none';
 
-  const cached=await syncCountryData(country, channel);
-  renderMysg(cached);
+  // Also load paired ads channel if defined
+  const chDef=(COUNTRY_CHANNELS[country]||[]).find(c=>c.id===channel);
+  const pairAdsId=chDef&&chDef.pairAds;
+  const [cached, adsCached]=await Promise.all([
+    syncCountryData(country, channel),
+    pairAdsId?syncCountryData(country, pairAdsId):Promise.resolve(null)
+  ]);
+  renderMysg(cached, adsCached);
 }
 
-function renderMysg(cached) {
-  // Show navbar (year tabs); hide US-only controls
+function renderMysg(cached, adsCached) {
+  // View tabs: show with WEEKLY/DAILY disabled
   const nav=document.querySelector('.navbar'); if(nav) nav.style.display='';
-  const tabGrp=document.getElementById('tab-group'); if(tabGrp) tabGrp.style.display='none';
+  const tabGrp=document.getElementById('tab-group');
+  if(tabGrp){
+    tabGrp.style.display='';
+    const T_EN=['annual','monthly'];
+    if(!T_EN.includes(activeTab)) activeTab='monthly';
+    tabGrp.innerHTML=['annual','quarter','monthly','weekly','daily'].map(t=>{
+      const en=T_EN.includes(t);
+      return `<button class="tab-btn${activeTab===t?' active':''}"${en?` onclick="setTab('${t}')"`:''}
+        style="${en?'':'opacity:0.35;cursor:not-allowed;pointer-events:none'}">${t.toUpperCase()}</button>`;
+    }).join('');
+  }
   const vineGrp=document.getElementById('vine-group'); if(vineGrp) vineGrp.style.display='none';
   const unitTbs=document.getElementById('unit-tabs'); if(unitTbs) unitTbs.style.display='none';
-  const navR=document.querySelector('.navbar-right'); if(navR) navR.style.display='none';
+  // Show date range placeholder (disabled)
+  const navR=document.querySelector('.navbar-right');
+  if(navR){navR.style.display='';navR.style.opacity='0.35';navR.style.pointerEvents='none';}
   ['week-nav-bar','review-section','daily-section','overview-section','settings-section','ratio-grid'].forEach(id=>{
     const el=document.getElementById(id); if(el) el.style.display='none';
   });
@@ -3410,13 +3431,19 @@ function renderMysg(cached) {
   const yt=document.getElementById('year-tabs');
   if(yt) yt.innerHTML=mysgYears.map(y=>`<button class="year-tab${y===activeYear?' active':''}" onclick="selectYear(${y})">${y}</button>`).join('');
 
-  // Filter to selected year
   const data=allData.filter(d=>d.yr===activeYear);
+
+  // Ads data by month (FBAds is always USD)
+  const adsMap={};
+  if(adsCached&&adsCached.data){
+    adsCached.data.filter(d=>d.yr===activeYear).forEach(d=>{adsMap[d.mo]={adSpend:d.adSpend||0};});
+  }
+  const hasAds=!activeChannel.includes('Ads')&&Object.keys(adsMap).length>0;
 
   const isAds=activeChannel.includes('Ads');
   const sym=_ovSym();
 
-  // Convert native channel currency → activeCurrency per month
+  // Native currency → activeCurrency
   const toActive=(val,yr,mo)=>{
     if(currency===activeCurrency) return val;
     let usd=val;
@@ -3427,19 +3454,29 @@ function renderMysg(cached) {
     if(activeCurrency==='MYR') return usd*(MYR_RATES[yr+'.'+mo]||4.03);
     return usd;
   };
+  // Ads USD → activeCurrency
+  const adsToActive=(val,yr,mo)=>{
+    if(activeCurrency==='USD') return val;
+    return val*getRate(yr,mo);
+  };
   const fmtM=n=>sym+Math.round(n||0).toLocaleString('en-US');
 
-  // KPI values (converted)
-  const totalVal  =data.reduce((s,d)=>s+toActive(isAds?(d.adSpend||0):(d.sales||0),d.yr,d.mo),0);
-  const totalOrds =data.reduce((s,d)=>s+(isAds?(d.adOrders||0):(d.orders||0)),0);
-  const avgOrd    =totalOrds>0?totalVal/totalOrds:0;
+  const totalSales=data.reduce((s,d)=>s+toActive(isAds?(d.adSpend||0):(d.sales||0),d.yr,d.mo),0);
+  const totalOrds=data.reduce((s,d)=>s+(isAds?(d.adOrders||0):(d.orders||0)),0);
+  const avgOrd=totalOrds>0?totalSales/totalOrds:0;
+  const totalAdSpend=hasAds?Object.entries(adsMap).reduce((s,[mo,a])=>s+adsToActive(a.adSpend,activeYear,+mo),0):0;
+  const roas=totalAdSpend>0?totalSales/totalAdSpend:0;
 
   const kpis=isAds
-    ?[{label:isKo()?'총 광고비':'Total Ad Spend',value:fmtM(totalVal),sub:activeCurrency},
+    ?[{label:isKo()?'총 광고비':'Total Ad Spend',value:fmtM(totalSales),sub:activeCurrency},
       {label:isKo()?'총 구매수':'Purchases',value:fmtN(totalOrds),sub:isKo()?'건':'orders'}]
-    :[{label:isKo()?'총 매출':'Total Sales',value:fmtM(totalVal),sub:activeCurrency},
+    :[{label:isKo()?'총 매출':'Total Sales',value:fmtM(totalSales),sub:activeCurrency},
       {label:isKo()?'주문수':'Orders',value:fmtN(totalOrds),sub:isKo()?'건':'orders'},
-      {label:isKo()?'평균 주문가':'Avg Order',value:fmtM(avgOrd),sub:activeCurrency}];
+      {label:isKo()?'평균 주문가':'Avg Order',value:fmtM(avgOrd),sub:activeCurrency},
+      ...(hasAds?[
+        {label:isKo()?'광고비':'Ad Spend',value:fmtM(totalAdSpend),sub:activeCurrency},
+        {label:'ROAS',value:roas.toFixed(2)+'x',sub:isKo()?'매출÷광고비':'Sales÷Spend'}
+      ]:[])];
 
   const kr=document.getElementById('kpi-row1');
   kr.className='kpi-grid5';
@@ -3452,60 +3489,69 @@ function renderMysg(cached) {
 
   const tb=document.getElementById('top-banner'); if(tb) tb.innerHTML='';
 
-  // Chart
   const dc=document.getElementById('donut-card'); if(dc) dc.style.display='none';
   const cg=document.getElementById('charts-grid');
   if(cg){cg.style.display='';cg.style.gridTemplateColumns='1fr';}
   const mw=document.getElementById('mainChart-wrap'); if(mw) mw.style.height='340px';
   const title=document.getElementById('chart-main-title');
   const _chLabel=activeChannel==='ALL'?'All Channels':(CHANNEL_LABELS[activeChannel]||activeChannel);
-  if(title) title.textContent=_chLabel+' '+(isAds?'광고비':'매출')+' 월별';
+  if(title) title.textContent=_chLabel+' 월별'+(hasAds?' · 매출 vs 광고비':'');
   const ctmix=document.getElementById('ct-mix'); if(ctmix) ctmix.style.display='none';
 
-  // Pre-convert values for chart
-  const chartData=data.map(d=>({...d,_val:toActive(isAds?(d.adSpend||0):(d.sales||0),d.yr,d.mo)}));
-  renderMysgChart(chartData, activeCurrency, isAds, sym);
+  const chartData=data.map(d=>({
+    ...d,
+    _val:toActive(isAds?(d.adSpend||0):(d.sales||0),d.yr,d.mo),
+    _adVal:hasAds&&adsMap[d.mo]?adsToActive(adsMap[d.mo].adSpend,d.yr,d.mo):null
+  }));
+  renderMysgChart(chartData, activeCurrency, isAds, sym, hasAds);
 
-  // Monthly detail table
+  // Monthly detail table with ROAS
   const ss=document.getElementById('summary-section');
   if(ss){
     ss.innerHTML=`<div class="section-title" style="margin-top:20px">${isKo()?'월별 상세':'Monthly Detail'}</div>
     <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:13px">
       <thead><tr style="border-bottom:2px solid var(--border)">
         <th style="text-align:left;padding:8px 12px;color:var(--muted);font-weight:600">${isKo()?'월':'Month'}</th>
-        <th style="text-align:right;padding:8px 12px;color:var(--muted);font-weight:600">${isAds?(isKo()?'광고비':'Ad Spend'):(isKo()?'매출':'Sales')}</th>
-        ${!isAds?`<th style="text-align:right;padding:8px 12px;color:var(--muted);font-weight:600">${isKo()?'주문수':'Orders'}</th>`:''}
-        ${!isAds?`<th style="text-align:right;padding:8px 12px;color:var(--muted);font-weight:600">${isKo()?'평균 주문가':'Avg Order'}</th>`:''}
+        <th style="text-align:right;padding:8px 12px;color:var(--muted);font-weight:600">${isKo()?'매출':'Sales'}</th>
+        <th style="text-align:right;padding:8px 12px;color:var(--muted);font-weight:600">${isKo()?'주문수':'Orders'}</th>
+        ${hasAds?`<th style="text-align:right;padding:8px 12px;color:var(--muted);font-weight:600">${isKo()?'광고비':'Ad Spend'}</th>
+        <th style="text-align:right;padding:8px 12px;color:var(--muted);font-weight:600">ROAS</th>`:''}
       </tr></thead>
-      <tbody>
-        ${data.map(d=>{
-          const val=toActive(isAds?(d.adSpend||0):(d.sales||0),d.yr,d.mo);
-          const ords=d.orders||0;
-          return `<tr style="border-bottom:1px solid var(--border)">
-            <td style="padding:8px 12px">${MO_LABELS[d.mo-1]}</td>
-            <td style="text-align:right;padding:8px 12px;font-weight:600">${fmtM(val)}</td>
-            ${!isAds?`<td style="text-align:right;padding:8px 12px">${fmtN(ords)}</td>`:''}
-            ${!isAds?`<td style="text-align:right;padding:8px 12px;color:var(--muted)">${ords>0?fmtM(val/ords):'-'}</td>`:''}
-          </tr>`;
-        }).join('')}
-      </tbody>
+      <tbody>${data.map(d=>{
+        const val=toActive(d.sales||0,d.yr,d.mo);
+        const ads=hasAds&&adsMap[d.mo]?adsToActive(adsMap[d.mo].adSpend,d.yr,d.mo):null;
+        const r=ads&&ads>0?val/ads:null;
+        return `<tr style="border-bottom:1px solid var(--border)">
+          <td style="padding:8px 12px">${MO_LABELS[d.mo-1]}</td>
+          <td style="text-align:right;padding:8px 12px;font-weight:600">${fmtM(val)}</td>
+          <td style="text-align:right;padding:8px 12px">${fmtN(d.orders||0)}</td>
+          ${hasAds?`<td style="text-align:right;padding:8px 12px;color:var(--muted)">${ads!==null?fmtM(ads):'-'}</td>
+          <td style="text-align:right;padding:8px 12px;font-weight:600;color:${r&&r>=2?'#16a34a':r&&r<1?'#dc2626':'var(--text)'}">${r?r.toFixed(2)+'x':'-'}</td>`:''}
+        </tr>`;
+      }).join('')}</tbody>
     </table></div>`;
   }
 
-  // Monthly best products — sortable, current year only
+  // Products: flat annual list sorted by sales, names normalized
   if(ss && cached.products && cached.products.length) {
-    ss.innerHTML+=`<div class="section-title" style="margin-top:28px">${isKo()?'월별 베스트 상품 TOP 5':'Monthly Best Products TOP 5'}</div><div id="sg-prod-section"></div>`;
+    ss.innerHTML+=`<div class="section-title" style="margin-top:28px">${isKo()?'베스트 상품 (연간)':'Best Products (Year)'}</div><div id="sg-prod-section"></div>`;
     _prodSortCol='sales'; _prodSortDir=-1;
     _renderSgProds(cached, activeYear, toActive);
   }
 }
 
+function _normProdName(name){
+  const tags=[];
+  let rest=(name||'').trim();
+  let m;
+  while((m=rest.match(/^\[([^\]]+)\]\s*/))){ tags.push(m[1]); rest=rest.slice(m[0].length); }
+  return {base:rest||name,tags};
+}
 function _renderSgProds(cached, yr, toActiveFn){
   _cachedSgProds=cached;
   const container=document.getElementById('sg-prod-section');
   if(!container||!cached||!cached.products||!cached.products.length)return;
   const curYr=yr||activeYear;
-  // Rebuild toActive from cached currency when called from _sortProds
   const {currency}=cached;
   const cvt=toActiveFn||(function(val,y,m){
     if(currency===activeCurrency) return val;
@@ -3521,37 +3567,39 @@ function _renderSgProds(cached, yr, toActiveFn){
   const fmtM=n=>sym+Math.round(n||0).toLocaleString('en-US');
   const si=col=>_prodSortCol===col?(_prodSortDir===-1?'▼':'▲'):'⇅';
   const thStyle='text-align:right;padding:6px 12px;color:var(--muted);font-weight:600;cursor:pointer;user-select:none;white-space:nowrap';
-  const byMonth={};
+
+  // Aggregate by normalized base name across all months in the year
+  const aggMap={};
   cached.products.filter(p=>p.yr===curYr).forEach(p=>{
-    const k=p.yr+'.'+p.mo;
-    if(!byMonth[k])byMonth[k]=[];
-    byMonth[k].push(p);
+    const {base,tags}=_normProdName(p.name||'');
+    if(!aggMap[base]) aggMap[base]={base,tags:new Set(),qty:0,sales:0,yr:p.yr,mos:[]};
+    tags.forEach(t=>aggMap[base].tags.add(t));
+    aggMap[base].qty+=(p.qty||0);
+    // Convert each month's sales using its own rate
+    aggMap[base].sales+=cvt(p.sales||0,p.yr,p.mo);
+    if(!aggMap[base].mos.includes(p.mo)) aggMap[base].mos.push(p.mo);
   });
-  const sortedMonths=Object.keys(byMonth).sort((a,b)=>{
-    const [ay,am]=a.split('.').map(Number);
-    const [by,bm]=b.split('.').map(Number);
-    return ay*12+am-(by*12+bm);
-  });
-  let html='';
-  sortedMonths.forEach(k=>{
-    const [y,m]=k.split('.').map(Number);
-    const top5=[...byMonth[k]].sort((a,b)=>_prodSortDir*((b[_prodSortCol]||0)-(a[_prodSortCol]||0))).slice(0,5);
-    html+=`<div style="margin:16px 0 6px;font-weight:600;font-size:13px">${MO_LABELS[m-1]}</div>
-    <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:13px">
-      <thead><tr style="border-bottom:2px solid var(--border)">
-        <th style="text-align:left;padding:6px 12px;color:var(--muted);font-weight:600;width:40px">#</th>
-        <th style="text-align:left;padding:6px 12px;color:var(--muted);font-weight:600">${isKo()?'상품명':'Product'}</th>
-        <th style="${thStyle}" onclick="window._sortProds('qty')">${isKo()?'판매수량':'Qty'} <span style="font-size:10px;color:${_prodSortCol==='qty'?'var(--accent)':'var(--muted)'}">${si('qty')}</span></th>
-        <th style="${thStyle}" onclick="window._sortProds('sales')">${isKo()?'판매액':'Sales'} <span style="font-size:10px;color:${_prodSortCol==='sales'?'var(--accent)':'var(--muted)'}">${si('sales')}</span></th>
-      </tr></thead>
-      <tbody>${top5.map((p,i)=>`<tr style="border-bottom:1px solid var(--border)">
+  const rows=Object.values(aggMap).sort((a,b)=>_prodSortDir*((b[_prodSortCol]||0)-(a[_prodSortCol]||0)));
+
+  const html=`<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:13px">
+    <thead><tr style="border-bottom:2px solid var(--border)">
+      <th style="text-align:left;padding:6px 12px;color:var(--muted);font-weight:600;width:36px">#</th>
+      <th style="text-align:left;padding:6px 12px;color:var(--muted);font-weight:600">${isKo()?'상품명':'Product'}</th>
+      <th style="${thStyle}" onclick="window._sortProds('qty')">${isKo()?'수량':'Qty'} <span style="font-size:10px;color:${_prodSortCol==='qty'?'var(--accent)':'var(--muted)'}">${si('qty')}</span></th>
+      <th style="${thStyle}" onclick="window._sortProds('sales')">${isKo()?'매출':'Sales'} <span style="font-size:10px;color:${_prodSortCol==='sales'?'var(--accent)':'var(--muted)'}">${si('sales')}</span></th>
+    </tr></thead>
+    <tbody>${rows.map((p,i)=>{
+      const tagArr=[...p.tags];
+      return `<tr style="border-bottom:1px solid var(--border)">
         <td style="padding:6px 12px;color:var(--muted);font-size:11px">${i+1}</td>
-        <td style="padding:6px 12px;text-align:left">${p.name||'-'}</td>
-        <td style="text-align:right;padding:6px 12px;font-weight:600">${fmtN(p.qty||0)}</td>
-        <td style="text-align:right;padding:6px 12px;${_prodSortCol==='sales'?'color:#1d4ed8;font-weight:700':''}">${fmtM(cvt(p.sales||0,y,m))}</td>
-      </tr>`).join('')}</tbody>
-    </table></div>`;
-  });
+        <td style="padding:6px 12px;text-align:left">
+          <div style="font-weight:500">${p.base}</div>
+          ${tagArr.length?`<div style="font-size:11px;color:var(--muted);margin-top:2px">${tagArr.join(' · ')}</div>`:''}</td>
+        <td style="text-align:right;padding:6px 12px;font-weight:600">${fmtN(p.qty)}</td>
+        <td style="text-align:right;padding:6px 12px;${_prodSortCol==='sales'?'color:#1d4ed8;font-weight:700':''}">${fmtM(p.sales)}</td>
+      </tr>`;
+    }).join('')}</tbody>
+  </table></div>`;
   container.innerHTML=html;
 }
 window._sortProds=function(col){
@@ -3560,7 +3608,7 @@ window._sortProds=function(col){
   _renderSgProds(_cachedSgProds);
 };
 
-function renderMysgChart(data, currency, isAds, sym) {
+function renderMysgChart(data, currency, isAds, sym, hasAds) {
   const labels = data.map(d=>MO_LABELS[d.mo-1]);
   const values = data.map(d=>d._val!==undefined?d._val:(isAds?(d.adSpend||0):(d.sales||0)));
   const isLine = chartType==='line';
@@ -3568,26 +3616,42 @@ function renderMysgChart(data, currency, isAds, sym) {
   if(mainCI) mainCI.destroy();
   if(donutCI){donutCI.destroy();donutCI=null;}
 
+  const datasets=[{
+    label:(isAds?'Ad Spend':'Sales')+' ('+currency+')',
+    data: values,
+    backgroundColor: isLine?'rgba(37,99,235,0.12)':'rgba(37,99,235,0.82)',
+    borderColor:'#2563eb',
+    borderWidth: isLine?2:0,
+    borderRadius: isLine?0:6,
+    fill: isLine,
+    tension:0.35,
+    yAxisID:'y',
+  }];
+
+  if(hasAds&&!isAds){
+    const adValues=data.map(d=>d._adVal||0);
+    datasets.push({
+      label:'Ad Spend ('+currency+')',
+      data:adValues,
+      backgroundColor:'rgba(251,146,60,0.75)',
+      borderColor:'#f97316',
+      borderWidth:isLine?2:0,
+      borderRadius:isLine?0:6,
+      fill:false,
+      tension:0.35,
+      type:isLine?'line':'bar',
+      yAxisID:'y',
+    });
+  }
+
   mainCI=new Chart(document.getElementById('mainChart').getContext('2d'),{
     type: isLine?'line':'bar',
-    data:{
-      labels,
-      datasets:[{
-        label:(isAds?'Ad Spend':'Sales')+' ('+currency+')',
-        data: values,
-        backgroundColor: isLine?'rgba(37,99,235,0.12)':'rgba(37,99,235,0.82)',
-        borderColor:'#2563eb',
-        borderWidth: isLine?2:0,
-        borderRadius: isLine?0:6,
-        fill: isLine,
-        tension:0.35,
-      }]
-    },
+    data:{labels,datasets},
     options:{
       responsive:true, maintainAspectRatio:false,
       plugins:{
-        legend:{display:false},
-        tooltip:{callbacks:{label:ctx=>sym+Math.round(ctx.parsed.y).toLocaleString('en-US')+' '+currency}}
+        legend:{display:hasAds&&!isAds,position:'top',labels:{color:'var(--text)',font:{size:11},boxWidth:12}},
+        tooltip:{callbacks:{label:ctx=>ctx.dataset.label+': '+sym+Math.round(ctx.parsed.y).toLocaleString('en-US')}}
       },
       scales:{
         x:{grid:{display:false},ticks:{color:'var(--muted)',font:{size:11}}},
