@@ -26,6 +26,7 @@ let activeTab='weekly', activeCurrency='USD', vineMode='exclude', chartType='bar
 let activeMonth=null, activeYear=null, activeQuarter=null;
 let activeWeekIdx=null; // null=전체, number=특정주 인덱스
 let kwSortCol='sales', kwSortDir=-1;
+let _prodSortCol='sales', _prodSortDir=-1, _cachedSgProds=null;
 // ── Multi-country state ───────────────────────────────────────────
 let activeCountry='US', activeChannel='AMZ';
 const mysgCache={};
@@ -3459,42 +3460,61 @@ function renderMysg(cached) {
     </table></div>`;
   }
 
-  // Monthly best products TOP 5
+  // Monthly best products — sortable
   if(ss && cached && cached.products && cached.products.length) {
-    const byMonth={};
-    cached.products.forEach(p=>{
-      const k=p.yr+'.'+p.mo;
-      if(!byMonth[k]) byMonth[k]=[];
-      byMonth[k].push(p);
-    });
-    const sortedMonths=Object.keys(byMonth).sort((a,b)=>{
-      const [ay,am]=a.split('.').map(Number);
-      const [by,bm]=b.split('.').map(Number);
-      return ay*12+am-(by*12+bm);
-    });
-    let prodHtml=`<div class="section-title" style="margin-top:28px">${isKo()?'월별 베스트 상품 TOP 5':'Monthly Best Products TOP 5'}</div>`;
-    sortedMonths.forEach(k=>{
-      const [yr,mo]=k.split('.');
-      const top5=[...byMonth[k]].sort((a,b)=>(b.qty||0)-(a.qty||0)).slice(0,5);
-      prodHtml+=`<div style="margin:16px 0 6px;font-weight:600;font-size:13px">${yr} ${MO_LABELS[mo-1]}</div>
-      <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:13px">
-        <thead><tr style="border-bottom:2px solid var(--border)">
-          <th style="text-align:left;padding:6px 12px;color:var(--muted);font-weight:600;width:50px">#</th>
-          <th style="text-align:left;padding:6px 12px;color:var(--muted);font-weight:600">${isKo()?'상품명':'Product'}</th>
-          <th style="text-align:right;padding:6px 12px;color:var(--muted);font-weight:600">${isKo()?'판매수량':'Qty'}</th>
-          <th style="text-align:right;padding:6px 12px;color:var(--muted);font-weight:600">${isKo()?'매출':'Sales'}</th>
-        </tr></thead>
-        <tbody>${top5.map((p,i)=>`<tr style="border-bottom:1px solid var(--border)">
-          <td style="padding:6px 12px;color:var(--muted);font-size:11px">${i+1}</td>
-          <td style="padding:6px 12px">${p.name||'-'}</td>
-          <td style="text-align:right;padding:6px 12px;font-weight:600">${fmtN(p.qty||0)}</td>
-          <td style="text-align:right;padding:6px 12px;color:var(--muted)">${fmtM(p.sales||0)}</td>
-        </tr>`).join('')}</tbody>
-      </table></div>`;
-    });
-    ss.innerHTML+=prodHtml;
+    ss.innerHTML+=`<div class="section-title" style="margin-top:28px">${isKo()?'월별 베스트 상품 TOP 5':'Monthly Best Products TOP 5'}</div><div id="sg-prod-section"></div>`;
+    _prodSortCol='sales'; _prodSortDir=-1;
+    _renderSgProds(cached);
   }
 }
+
+function _renderSgProds(cached){
+  _cachedSgProds=cached;
+  const container=document.getElementById('sg-prod-section');
+  if(!container||!cached||!cached.products||!cached.products.length)return;
+  const {currency}=cached;
+  const sym=currency==='MYR'?'RM ':currency==='SGD'?'S$':'$';
+  const fmtM=n=>sym+Math.round(n||0).toLocaleString('en-US');
+  const si=col=>_prodSortCol===col?(_prodSortDir===-1?'▼':'▲'):'⇅';
+  const thStyle='text-align:right;padding:6px 12px;color:var(--muted);font-weight:600;cursor:pointer;user-select:none;white-space:nowrap';
+  const byMonth={};
+  cached.products.forEach(p=>{
+    const k=p.yr+'.'+p.mo;
+    if(!byMonth[k])byMonth[k]=[];
+    byMonth[k].push(p);
+  });
+  const sortedMonths=Object.keys(byMonth).sort((a,b)=>{
+    const [ay,am]=a.split('.').map(Number);
+    const [by,bm]=b.split('.').map(Number);
+    return ay*12+am-(by*12+bm);
+  });
+  let html='';
+  sortedMonths.forEach(k=>{
+    const [yr,mo]=k.split('.');
+    const top5=[...byMonth[k]].sort((a,b)=>_prodSortDir*((b[_prodSortCol]||0)-(a[_prodSortCol]||0))).slice(0,5);
+    html+=`<div style="margin:16px 0 6px;font-weight:600;font-size:13px">${yr} ${MO_LABELS[mo-1]}</div>
+    <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:13px">
+      <thead><tr style="border-bottom:2px solid var(--border)">
+        <th style="text-align:left;padding:6px 12px;color:var(--muted);font-weight:600;width:40px">#</th>
+        <th style="text-align:left;padding:6px 12px;color:var(--muted);font-weight:600">${isKo()?'상품명':'Product'}</th>
+        <th style="${thStyle}" onclick="window._sortProds('qty')">${isKo()?'판매수량':'Qty'} <span style="font-size:10px;color:${_prodSortCol==='qty'?'var(--accent)':'var(--muted)'}">${si('qty')}</span></th>
+        <th style="${thStyle}" onclick="window._sortProds('sales')">${isKo()?'판매액':'Sales'} <span style="font-size:10px;color:${_prodSortCol==='sales'?'var(--accent)':'var(--muted)'}">${si('sales')}</span></th>
+      </tr></thead>
+      <tbody>${top5.map((p,i)=>`<tr style="border-bottom:1px solid var(--border)">
+        <td style="padding:6px 12px;color:var(--muted);font-size:11px">${i+1}</td>
+        <td style="padding:6px 12px;text-align:left">${p.name||'-'}</td>
+        <td style="text-align:right;padding:6px 12px;font-weight:600">${fmtN(p.qty||0)}</td>
+        <td style="text-align:right;padding:6px 12px;${_prodSortCol==='sales'?'color:#1d4ed8;font-weight:700':''}">${fmtM(p.sales||0)}</td>
+      </tr>`).join('')}</tbody>
+    </table></div>`;
+  });
+  container.innerHTML=html;
+}
+window._sortProds=function(col){
+  if(_prodSortCol===col)_prodSortDir*=-1;
+  else{_prodSortCol=col;_prodSortDir=-1;}
+  _renderSgProds(_cachedSgProds);
+};
 
 function renderMysgChart(data, currency, isAds, sym) {
   const labels = data.map(d=>MO_LABELS[d.mo-1]);
