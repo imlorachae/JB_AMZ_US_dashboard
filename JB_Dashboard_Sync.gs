@@ -84,12 +84,19 @@ function doGet(e) {
     } catch(e) {}
 
     // 캐시 확인 — 파일이 바뀌지 않았으면 즉시 반환
+    const forceRefresh = e && e.parameter && e.parameter.force === '1';
     const props = PropertiesService.getScriptProperties();
     const cachedMod  = props.getProperty('doget_cache_mod');
     const cachedData = props.getProperty('doget_cache_data');
-    if (cachedMod && cachedData && parseInt(cachedMod) >= maxMod) {
-      return ContentService.createTextOutput(cachedData)
-        .setMimeType(ContentService.MimeType.JSON);
+    if (!forceRefresh && cachedMod && cachedData && parseInt(cachedMod) >= maxMod) {
+      try {
+        const parsed = JSON.parse(cachedData);
+        if (parsed.success && parsed.data && parsed.data.length) {
+          return ContentService.createTextOutput(cachedData)
+            .setMimeType(ContentService.MimeType.JSON);
+        }
+      } catch(cacheParseErr) {}
+      // 캐시 데이터가 유효하지 않으면 (success:false, 빈 배열 등) 재처리
     }
 
     // 캐시 미스 — 파일 재처리
@@ -355,7 +362,7 @@ function clearCache() {
   const keys = props.getKeys();
   let cleared = 0;
   for (const k of keys) {
-    if (k.startsWith('doget_cache') || k.startsWith('cache_')) {
+    if (k.startsWith('doget_cache') || k.startsWith('cache_') || k.startsWith('cachev12')) {
       props.deleteProperty(k);
       cleared++;
     }
@@ -401,17 +408,7 @@ function authorizeNow() {
 }
 
 // ================================================================
-// 10. 캐시 초기화 (데이터 안 들어올 때 Apps Script 에디터에서 직접 실행)
-// ================================================================
-function clearCache() {
-  const props = PropertiesService.getScriptProperties();
-  props.deleteProperty('doget_cache_mod');
-  props.deleteProperty('doget_cache_data');
-  Logger.log('✅ 캐시 초기화 완료 — 다음 동기화 시 파일 전체 재처리');
-}
-
-// ================================================================
-// 11. 트리거 설정 (최초 1회만 실행)
+// 10. 트리거 설정 (최초 1회만 실행)
 // ================================================================
 function createTrigger() {
   ScriptApp.getProjectTriggers().forEach(t => ScriptApp.deleteTrigger(t));

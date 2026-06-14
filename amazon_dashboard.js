@@ -2357,7 +2357,7 @@ async function syncFromDrive(silent=false) {
   if(btn) { btn.textContent='⏳'; btn.disabled=true; }
 
   try {
-    const res = await fetch(_addToken(DRIVE_SCRIPT_URL), {redirect:'follow'});
+    const res = await fetch(_addToken(DRIVE_SCRIPT_URL + '?force=1'), {redirect:'follow'});
     if(!res.ok) throw new Error('HTTP ' + res.status);
     const json = await res.json();
 
