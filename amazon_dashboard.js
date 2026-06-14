@@ -1824,13 +1824,23 @@ function renderDaily(){
   // daily detail
   const hasEvt=SPECIAL_EVENTS.some(e=>e.yr===cur.yr&&e.mo===cur.mo);
   const evtNote=hasEvt?SPECIAL_EVENTS.filter(e=>e.yr===cur.yr&&e.mo===cur.mo).map(e=>`<div class="evt-note">⚠️ ${T('idVerify')}: ${e.yr}/${e.mo}/${e.day_start}~${e.day_end}</div>`).join(''):'';
+  // 현재 월: 오늘(로컬)까지 데이터 없는 날 자리 표시 행 추가
+  const _lToday=new Date();
+  const _isThisMo=cur.yr===_lToday.getFullYear()&&cur.mo===_lToday.getMonth()+1;
+  const _showUpTo=_isThisMo?_lToday.getDate():0;
+  const _hasDays=new Set(sorted.map(r=>r.day));
+  const _LDOWS=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  const _fullSorted=[...sorted];
+  if(_showUpTo>0){for(let d=1;d<=_showUpTo;d++){if(!_hasDays.has(d))_fullSorted.push({yr:cur.yr,mo:cur.mo,day:d,dow:_LDOWS[new Date(cur.yr,cur.mo-1,d).getDay()],_noData:true,vine_adj:0,sales:0,organic:0,adSales:0,adSpend:0,orders:0,sessions:0});}}
+  _fullSorted.sort((a,b)=>a.day-b.day);
   document.getElementById('daily-section').innerHTML=`${evtNote}<div class="section-title">${T('dailyDetail')}</div>
-    <div class="daily-sticky"><table><thead><tr><th style="text-align:left;width:56px">${T('date')}</th><th style="width:34px">${T('dow')}</th><th>${T('totalSales')}</th><th>${T('organic')}</th><th>${T('adSales')}</th><th>${T('adSpend')}</th><th>${T('roas')}</th><th>${T('acos')}</th><th>${T('troas')}</th><th>${T('tacos')}</th><th>${T('orders')}</th><th>${T('session')}</th></tr></thead><tbody>${dailyRowsHTML(sorted,rate,cur)}</tbody></table></div>`;
+    <div class="daily-sticky"><table><thead><tr><th style="text-align:left;width:56px">${T('date')}</th><th style="width:34px">${T('dow')}</th><th>${T('totalSales')}</th><th>${T('organic')}</th><th>${T('adSales')}</th><th>${T('adSpend')}</th><th>${T('roas')}</th><th>${T('acos')}</th><th>${T('troas')}</th><th>${T('tacos')}</th><th>${T('orders')}</th><th>${T('session')}</th></tr></thead><tbody>${dailyRowsHTML(_fullSorted,rate,cur)}</tbody></table></div>`;
 }
 function dailyRowsHTML(rows,rate,cur){
   const vd=new Set(VINE_ITEMS.filter(v=>v.yr===cur.yr&&v.mo===cur.mo).map(v=>v.day));
   let html='';
   rows.forEach(r=>{
+    if(r._noData){const dk=dowName(r.dow);const isSun=['일','Sun'].includes(dk),isSat=['토','Sat'].includes(dk);const ms='style="color:var(--muted)"';html+=`<tr class="dim"><td class="col-date">${r.mo}/${r.day}</td><td class="col-dow" style="text-align:center;color:${isSun?'var(--red)':isSat?'#2563eb':'var(--muted)'}">${dk}</td><td ${ms}>—</td><td ${ms}>—</td><td ${ms}>—</td><td ${ms}>—</td><td ${ms}>—</td><td ${ms}>—</td><td ${ms}>—</td><td ${ms}>—</td><td ${ms}>—</td><td ${ms}>—</td></tr>`;return;}
     const ua=vineMode==='exclude';
     const aS=ua?r.sales+(r.vine_adj||0):r.sales, aO=ua?r.organic+(r.vine_adj||0):r.organic;
     const salesPending=r.sales===0&&r.adSales>0;
