@@ -1150,6 +1150,11 @@ function render(){
     return;
   }
   if(activeCountry!=='US'){ renderMysg(mysgCache[activeCountry+'_'+activeChannel]); return; }
+  // US 진입 시 SG/MY/UAE가 숨긴 요소 복원
+  {const _tg=document.getElementById('tab-group');if(_tg)_tg.style.display='';}
+  {const _ut=document.getElementById('unit-tabs');if(_ut)_ut.style.display='';}
+  {const _nr=document.querySelector('.navbar-right');if(_nr)_nr.style.display='';}
+  if(nav)nav.style.display='';
   // 매출/광고 모드 진입 시 placeholder 섹션 숨김 + 정상 섹션 복원
   ['overview-section','settings-section'].forEach(id=>{const el=document.getElementById(id); if(el) el.style.display='none';});
   ['review-section','top-banner','kpi-row1','ratio-grid','charts-grid','summary-section'].forEach(id=>{const el=document.getElementById(id); if(el) el.style.display='';});
