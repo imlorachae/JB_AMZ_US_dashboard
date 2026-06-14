@@ -166,7 +166,10 @@ function doGet(e) {
         const sf = sfIter.next();
         if (sf.getName().toLowerCase().endsWith('.csv')) sfFiles.push(sf);
       }
-      sfFiles.sort((a, b) => a.getLastUpdated().getTime() - b.getLastUpdated().getTime());
+      // 파일명 날짜(YY.MM.DD)로 정렬 — Drive 업로드 시간이 아닌 보고서 날짜 기준
+      // 나중에 업로드된 구버전 파일이 신버전 데이터를 덮어쓰는 버그 방지
+      const brDate = n => { const m = n.match(/(\d{2})\.\s*(\d{2})\.\s*(\d{2})/); return m ? parseInt(m[1])*10000+parseInt(m[2])*100+parseInt(m[3]) : 0; };
+      sfFiles.sort((a, b) => brDate(a.getName()) - brDate(b.getName()));
       for (const sf of sfFiles) {
         try {
           parseBusinessReportCsv(sf.getBlob().getDataAsString('UTF-8'), byDate);
