@@ -158,16 +158,20 @@ function doGet(e) {
     }
 
     // Business Reports(매출) 읽기 — sales 폴더 CSV를 ads 데이터에 병합
+    // 오래된 파일 먼저 처리 → 최신 파일이 마지막에 덮어써 올바른 값 유지
     try {
+      const sfFiles = [];
       const sfIter = DriveApp.getFolderById(SALES_FOLDER_ID).getFiles();
       while (sfIter.hasNext()) {
         const sf = sfIter.next();
-        if (sf.getName().toLowerCase().endsWith('.csv')) {
-          try {
-            parseBusinessReportCsv(sf.getBlob().getDataAsString('UTF-8'), byDate);
-            fileCount++;
-          } catch(e) { Logger.log('Sales CSV error: ' + sf.getName() + ' - ' + e.message); }
-        }
+        if (sf.getName().toLowerCase().endsWith('.csv')) sfFiles.push(sf);
+      }
+      sfFiles.sort((a, b) => a.getLastUpdated().getTime() - b.getLastUpdated().getTime());
+      for (const sf of sfFiles) {
+        try {
+          parseBusinessReportCsv(sf.getBlob().getDataAsString('UTF-8'), byDate);
+          fileCount++;
+        } catch(e) { Logger.log('Sales CSV error: ' + sf.getName() + ' - ' + e.message); }
       }
     } catch(e) { Logger.log('Sales folder error: ' + e.message); }
 
