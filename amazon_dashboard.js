@@ -1874,13 +1874,7 @@ function dailyRowsHTML(rows,rate,cur){
 function renderBanner(cur,cT,rate,cd,dim,proj){
   const conf=isConfirmed(cur.yr,cur.mo);
   const vine=cT.vineTotal<0?`<div class="vine-note-banner">${T('vineIncluded')}: ${fmtAgg(cT.vineTotal,rate.krw,rate.sgd)}</div>`:'';
-  const caGap=(()=>{
-    const today=new Date();today.setHours(0,0,0,0);
-    const rows=allData.filter(r=>!r._adOnly&&(r.sales>0||r.adSpend>0));
-    if(!rows.length)return 2;
-    const last=rows.reduce((mx,r)=>{const d=new Date(r.yr,r.mo-1,r.day);return d>mx?d:mx;},new Date(0));
-    return Math.max(0,Math.round((today-last)/864e5));
-  })();
+  const caGap=Math.max(0,getCaToday().getDate()-cd);
   const projMonthLabel=isKo()?`${T('projMonth')}${caGap}일 기준)`:`${T('projMonth')}${caGap} days)`;
   if(conf){
     document.getElementById('top-banner').innerHTML=`<div class="banner-confirmed"><div><div class="banner-label">✅ ${ymName(cur.yr,cur.mo)} ${T('confMonthTitle')}</div><div class="banner-value">${fmtAgg(cT.sales,rate.krw,rate.sgd)}</div>${vine}</div><div class="banner-right"><div class="banner-month">${ymName(cur.yr,cur.mo)}</div><div class="banner-days">${T('confirmed')}</div></div></div>`;
