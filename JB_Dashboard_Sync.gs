@@ -401,7 +401,17 @@ function authorizeNow() {
 }
 
 // ================================================================
-// 10. 트리거 설정 (최초 1회만 실행)
+// 10. 캐시 초기화 (데이터 안 들어올 때 Apps Script 에디터에서 직접 실행)
+// ================================================================
+function clearCache() {
+  const props = PropertiesService.getScriptProperties();
+  props.deleteProperty('doget_cache_mod');
+  props.deleteProperty('doget_cache_data');
+  Logger.log('✅ 캐시 초기화 완료 — 다음 동기화 시 파일 전체 재처리');
+}
+
+// ================================================================
+// 11. 트리거 설정 (최초 1회만 실행)
 // ================================================================
 function createTrigger() {
   ScriptApp.getProjectTriggers().forEach(t => ScriptApp.deleteTrigger(t));
