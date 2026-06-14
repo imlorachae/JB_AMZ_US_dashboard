@@ -55,7 +55,7 @@ const STR={
   confirmed:['확정','Confirmed'], projected:['예상','Projected'], inProgress:['진행중','In Progress'],
   confSales:['매출','Sales'], projSales:['예상 매출','Projected Sales'], curSales:['현재 매출','Current Sales'],
   vsPrev:['vs 전기','vs prev'], noData:['데이터 없음','No data'],
-  projMonth:['이번 달 예상 매출 (캘리포니아 -2일 기준)','Projected Monthly Sales (CA -2 days)'],
+  projMonth:['이번 달 예상 매출 (CA -','Projected Monthly Sales (CA -'],
   projWeek:['이번 주 예상 매출','Projected Weekly Sales'],
   confMonthTitle:['확정 매출','Confirmed Sales'], annualProj:['연간 예상 매출 (일평균×365)','Annual Projection (daily avg×365)'],
   dailyAvg:['일 평균','Daily avg'], days:['일','d'], confDays:['확정','Confirmed'], totalDays:['총','Total'],
@@ -1874,10 +1874,18 @@ function dailyRowsHTML(rows,rate,cur){
 function renderBanner(cur,cT,rate,cd,dim,proj){
   const conf=isConfirmed(cur.yr,cur.mo);
   const vine=cT.vineTotal<0?`<div class="vine-note-banner">${T('vineIncluded')}: ${fmtAgg(cT.vineTotal,rate.krw,rate.sgd)}</div>`:'';
+  const caGap=(()=>{
+    const today=new Date();today.setHours(0,0,0,0);
+    const rows=allData.filter(r=>!r._adOnly&&(r.sales>0||r.adSpend>0));
+    if(!rows.length)return 2;
+    const last=rows.reduce((mx,r)=>{const d=new Date(r.yr,r.mo-1,r.day);return d>mx?d:mx;},new Date(0));
+    return Math.max(0,Math.round((today-last)/864e5));
+  })();
+  const projMonthLabel=isKo()?`${T('projMonth')}${caGap}일 기준)`:`${T('projMonth')}${caGap} days)`;
   if(conf){
     document.getElementById('top-banner').innerHTML=`<div class="banner-confirmed"><div><div class="banner-label">✅ ${ymName(cur.yr,cur.mo)} ${T('confMonthTitle')}</div><div class="banner-value">${fmtAgg(cT.sales,rate.krw,rate.sgd)}</div>${vine}</div><div class="banner-right"><div class="banner-month">${ymName(cur.yr,cur.mo)}</div><div class="banner-days">${T('confirmed')}</div></div></div>`;
   } else {
-    document.getElementById('top-banner').innerHTML=`<div class="banner-projected"><div><div class="banner-label">🎯 ${T('projMonth')}</div><div class="banner-value">${fmtAgg(proj,rate.krw,rate.sgd)}</div><div class="banner-meta">${T('dailyAvg')} ${fmtAgg(cT.sales/cd,rate.krw,rate.sgd)} × ${dim}${T('days')}</div>${vine}</div><div class="banner-right"><div class="banner-month">${ymName(cur.yr,cur.mo)}</div><div class="banner-days">${T('confDays')} ${cd} / ${T('totalDays')} ${dim}</div></div></div>`;
+    document.getElementById('top-banner').innerHTML=`<div class="banner-projected"><div><div class="banner-label">🎯 ${projMonthLabel}</div><div class="banner-value">${fmtAgg(proj,rate.krw,rate.sgd)}</div><div class="banner-meta">${T('dailyAvg')} ${fmtAgg(cT.sales/cd,rate.krw,rate.sgd)} × ${dim}${T('days')}</div>${vine}</div><div class="banner-right"><div class="banner-month">${ymName(cur.yr,cur.mo)}</div><div class="banner-days">${T('confDays')} ${cd} / ${T('totalDays')} ${dim}</div></div></div>`;
   }
 }
 
