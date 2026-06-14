@@ -3373,8 +3373,12 @@ async function loadAndRenderMysg(country, channel) {
 }
 
 function renderMysg(cached) {
-  // Hide US-specific UI
-  const nav=document.querySelector('.navbar'); if(nav) nav.style.display='none';
+  // Show navbar (year tabs); hide US-only controls
+  const nav=document.querySelector('.navbar'); if(nav) nav.style.display='';
+  const tabGrp=document.getElementById('tab-group'); if(tabGrp) tabGrp.style.display='none';
+  const vineGrp=document.getElementById('vine-group'); if(vineGrp) vineGrp.style.display='none';
+  const unitTbs=document.getElementById('unit-tabs'); if(unitTbs) unitTbs.style.display='none';
+  const navR=document.querySelector('.navbar-right'); if(navR) navR.style.display='none';
   ['week-nav-bar','review-section','daily-section','overview-section','settings-section','ratio-grid'].forEach(id=>{
     const el=document.getElementById(id); if(el) el.style.display='none';
   });
@@ -3392,22 +3396,44 @@ function renderMysg(cached) {
     return;
   }
 
-  const {data,currency}=cached;
+  const {data:allData, currency}=cached;
+
+  // Year tabs from this channel's data
+  const mysgYears=[...new Set(allData.map(d=>d.yr))].sort((a,b)=>a-b);
+  if(!activeYear||!mysgYears.includes(activeYear)) activeYear=mysgYears[mysgYears.length-1];
+  const yt=document.getElementById('year-tabs');
+  if(yt) yt.innerHTML=mysgYears.map(y=>`<button class="year-tab${y===activeYear?' active':''}" onclick="selectYear(${y})">${y}</button>`).join('');
+
+  // Filter to selected year
+  const data=allData.filter(d=>d.yr===activeYear);
+
   const isAds=activeChannel.includes('Ads');
-  const sym=currency==='MYR'?'RM ':currency==='SGD'?'S$':'$';
+  const sym=_ovSym();
+
+  // Convert native channel currency → activeCurrency per month
+  const toActive=(val,yr,mo)=>{
+    if(currency===activeCurrency) return val;
+    let usd=val;
+    if(currency==='SGD') usd=val/(SGD_RATES[yr+'.'+mo]||1.28);
+    else if(currency==='MYR') usd=val/(MYR_RATES[yr+'.'+mo]||4.03);
+    if(activeCurrency==='KRW') return usd*(KRW_RATES[yr+'.'+mo]||1526);
+    if(activeCurrency==='SGD') return usd*(SGD_RATES[yr+'.'+mo]||1.28);
+    if(activeCurrency==='MYR') return usd*(MYR_RATES[yr+'.'+mo]||4.03);
+    return usd;
+  };
   const fmtM=n=>sym+Math.round(n||0).toLocaleString('en-US');
 
-  // KPI values
-  const totalVal   = data.reduce((s,d)=>s+(isAds?(d.adSpend||0):(d.sales||0)),0);
-  const totalOrds  = data.reduce((s,d)=>s+(isAds?(d.adOrders||0):(d.orders||0)),0);
-  const avgOrd     = totalOrds>0?totalVal/totalOrds:0;
+  // KPI values (converted)
+  const totalVal  =data.reduce((s,d)=>s+toActive(isAds?(d.adSpend||0):(d.sales||0),d.yr,d.mo),0);
+  const totalOrds =data.reduce((s,d)=>s+(isAds?(d.adOrders||0):(d.orders||0)),0);
+  const avgOrd    =totalOrds>0?totalVal/totalOrds:0;
 
-  const kpis = isAds
-    ? [{label:isKo()?'총 광고비':'Total Ad Spend',value:fmtM(totalVal),sub:currency},
-       {label:isKo()?'총 구매수':'Purchases',value:fmtN(totalOrds),sub:isKo()?'건':'orders'}]
-    : [{label:isKo()?'총 매출':'Total Sales',value:fmtM(totalVal),sub:currency},
-       {label:isKo()?'주문수':'Orders',value:fmtN(totalOrds),sub:isKo()?'건':'orders'},
-       {label:isKo()?'평균 주문가':'Avg Order',value:fmtM(avgOrd),sub:currency}];
+  const kpis=isAds
+    ?[{label:isKo()?'총 광고비':'Total Ad Spend',value:fmtM(totalVal),sub:activeCurrency},
+      {label:isKo()?'총 구매수':'Purchases',value:fmtN(totalOrds),sub:isKo()?'건':'orders'}]
+    :[{label:isKo()?'총 매출':'Total Sales',value:fmtM(totalVal),sub:activeCurrency},
+      {label:isKo()?'주문수':'Orders',value:fmtN(totalOrds),sub:isKo()?'건':'orders'},
+      {label:isKo()?'평균 주문가':'Avg Order',value:fmtM(avgOrd),sub:activeCurrency}];
 
   const kr=document.getElementById('kpi-row1');
   kr.className='kpi-grid5';
@@ -3418,10 +3444,9 @@ function renderMysg(cached) {
       <div style="color:var(--muted);font-size:11px;margin-top:2px">${k.sub}</div>
     </div>`).join('');
 
-  // Top banner empty
   const tb=document.getElementById('top-banner'); if(tb) tb.innerHTML='';
 
-  // Chart setup
+  // Chart
   const dc=document.getElementById('donut-card'); if(dc) dc.style.display='none';
   const cg=document.getElementById('charts-grid');
   if(cg){cg.style.display='';cg.style.gridTemplateColumns='1fr';}
@@ -3429,10 +3454,11 @@ function renderMysg(cached) {
   const title=document.getElementById('chart-main-title');
   const _chLabel=activeChannel==='ALL'?'All Channels':(CHANNEL_LABELS[activeChannel]||activeChannel);
   if(title) title.textContent=_chLabel+' '+(isAds?'광고비':'매출')+' 월별';
-  // Hide mix button (no mix for monthly)
   const ctmix=document.getElementById('ct-mix'); if(ctmix) ctmix.style.display='none';
 
-  renderMysgChart(data, currency, isAds, sym);
+  // Pre-convert values for chart
+  const chartData=data.map(d=>({...d,_val:toActive(isAds?(d.adSpend||0):(d.sales||0),d.yr,d.mo)}));
+  renderMysgChart(chartData, activeCurrency, isAds, sym);
 
   // Monthly detail table
   const ss=document.getElementById('summary-section');
@@ -3447,10 +3473,10 @@ function renderMysg(cached) {
       </tr></thead>
       <tbody>
         ${data.map(d=>{
-          const val=isAds?(d.adSpend||0):(d.sales||0);
+          const val=toActive(isAds?(d.adSpend||0):(d.sales||0),d.yr,d.mo);
           const ords=d.orders||0;
           return `<tr style="border-bottom:1px solid var(--border)">
-            <td style="padding:8px 12px">${d.yr} ${MO_LABELS[d.mo-1]}</td>
+            <td style="padding:8px 12px">${MO_LABELS[d.mo-1]}</td>
             <td style="text-align:right;padding:8px 12px;font-weight:600">${fmtM(val)}</td>
             ${!isAds?`<td style="text-align:right;padding:8px 12px">${fmtN(ords)}</td>`:''}
             ${!isAds?`<td style="text-align:right;padding:8px 12px;color:var(--muted)">${ords>0?fmtM(val/ords):'-'}</td>`:''}
@@ -3460,25 +3486,37 @@ function renderMysg(cached) {
     </table></div>`;
   }
 
-  // Monthly best products — sortable
-  if(ss && cached && cached.products && cached.products.length) {
+  // Monthly best products — sortable, current year only
+  if(ss && cached.products && cached.products.length) {
     ss.innerHTML+=`<div class="section-title" style="margin-top:28px">${isKo()?'월별 베스트 상품 TOP 5':'Monthly Best Products TOP 5'}</div><div id="sg-prod-section"></div>`;
     _prodSortCol='sales'; _prodSortDir=-1;
-    _renderSgProds(cached);
+    _renderSgProds(cached, activeYear, toActive);
   }
 }
 
-function _renderSgProds(cached){
+function _renderSgProds(cached, yr, toActiveFn){
   _cachedSgProds=cached;
   const container=document.getElementById('sg-prod-section');
   if(!container||!cached||!cached.products||!cached.products.length)return;
+  const curYr=yr||activeYear;
+  // Rebuild toActive from cached currency when called from _sortProds
   const {currency}=cached;
-  const sym=currency==='MYR'?'RM ':currency==='SGD'?'S$':'$';
+  const cvt=toActiveFn||(function(val,y,m){
+    if(currency===activeCurrency) return val;
+    let usd=val;
+    if(currency==='SGD') usd=val/(SGD_RATES[y+'.'+m]||1.28);
+    else if(currency==='MYR') usd=val/(MYR_RATES[y+'.'+m]||4.03);
+    if(activeCurrency==='KRW') return usd*(KRW_RATES[y+'.'+m]||1526);
+    if(activeCurrency==='SGD') return usd*(SGD_RATES[y+'.'+m]||1.28);
+    if(activeCurrency==='MYR') return usd*(MYR_RATES[y+'.'+m]||4.03);
+    return usd;
+  });
+  const sym=_ovSym();
   const fmtM=n=>sym+Math.round(n||0).toLocaleString('en-US');
   const si=col=>_prodSortCol===col?(_prodSortDir===-1?'▼':'▲'):'⇅';
   const thStyle='text-align:right;padding:6px 12px;color:var(--muted);font-weight:600;cursor:pointer;user-select:none;white-space:nowrap';
   const byMonth={};
-  cached.products.forEach(p=>{
+  cached.products.filter(p=>p.yr===curYr).forEach(p=>{
     const k=p.yr+'.'+p.mo;
     if(!byMonth[k])byMonth[k]=[];
     byMonth[k].push(p);
@@ -3490,9 +3528,9 @@ function _renderSgProds(cached){
   });
   let html='';
   sortedMonths.forEach(k=>{
-    const [yr,mo]=k.split('.');
+    const [y,m]=k.split('.').map(Number);
     const top5=[...byMonth[k]].sort((a,b)=>_prodSortDir*((b[_prodSortCol]||0)-(a[_prodSortCol]||0))).slice(0,5);
-    html+=`<div style="margin:16px 0 6px;font-weight:600;font-size:13px">${yr} ${MO_LABELS[mo-1]}</div>
+    html+=`<div style="margin:16px 0 6px;font-weight:600;font-size:13px">${MO_LABELS[m-1]}</div>
     <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:13px">
       <thead><tr style="border-bottom:2px solid var(--border)">
         <th style="text-align:left;padding:6px 12px;color:var(--muted);font-weight:600;width:40px">#</th>
@@ -3504,7 +3542,7 @@ function _renderSgProds(cached){
         <td style="padding:6px 12px;color:var(--muted);font-size:11px">${i+1}</td>
         <td style="padding:6px 12px;text-align:left">${p.name||'-'}</td>
         <td style="text-align:right;padding:6px 12px;font-weight:600">${fmtN(p.qty||0)}</td>
-        <td style="text-align:right;padding:6px 12px;${_prodSortCol==='sales'?'color:#1d4ed8;font-weight:700':''}">${fmtM(p.sales||0)}</td>
+        <td style="text-align:right;padding:6px 12px;${_prodSortCol==='sales'?'color:#1d4ed8;font-weight:700':''}">${fmtM(cvt(p.sales||0,y,m))}</td>
       </tr>`).join('')}</tbody>
     </table></div>`;
   });
@@ -3518,7 +3556,7 @@ window._sortProds=function(col){
 
 function renderMysgChart(data, currency, isAds, sym) {
   const labels = data.map(d=>MO_LABELS[d.mo-1]);
-  const values = data.map(d=>isAds?(d.adSpend||0):(d.sales||0));
+  const values = data.map(d=>d._val!==undefined?d._val:(isAds?(d.adSpend||0):(d.sales||0)));
   const isLine = chartType==='line';
 
   if(mainCI) mainCI.destroy();
