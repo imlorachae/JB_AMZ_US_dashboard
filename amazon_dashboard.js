@@ -277,7 +277,11 @@ function mergeData(existing, incoming) {
     }
   });
 
-  return Array.from(map.values()).sort((a,b)=>new Date(a.yr,a.mo-1,a.day)-new Date(b.yr,b.mo-1,b.day));
+  const _sorted=Array.from(map.values()).sort((a,b)=>new Date(a.yr,a.mo-1,a.day)-new Date(b.yr,b.mo-1,b.day));
+  // Drive/backup 데이터는 vine_adj=0으로 오므로 VINE_ITEMS 기준으로 항상 재적용
+  const _vmap={};VINE_ITEMS.forEach(v=>{const k=v.yr+'_'+v.mo+'_'+v.day;_vmap[k]=(_vmap[k]||0)+(v.adj||0);});
+  _sorted.forEach(r=>{const k=r.yr+'_'+r.mo+'_'+r.day;r.vine_adj=_vmap[k]||0;});
+  return _sorted;
 }
 
 function exportBackup() {
