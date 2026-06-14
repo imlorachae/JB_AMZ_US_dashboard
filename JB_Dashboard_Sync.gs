@@ -169,7 +169,7 @@ function doGet(e) {
       sfFiles.sort((a, b) => a.getLastUpdated().getTime() - b.getLastUpdated().getTime());
       for (const sf of sfFiles) {
         try {
-          parseBusinessReportCsv(sf.getBlob().getDataAsString('UTF-8'), byDate);
+          parseBusinessReportCsv(sf.getBlob().getDataAsString('UTF-8'), byDate, sf.getLastUpdated());
           fileCount++;
         } catch(e) { Logger.log('Sales CSV error: ' + sf.getName() + ' - ' + e.message); }
       }
@@ -426,7 +426,7 @@ function createTrigger() {
 // ================================================================
 // Business Report CSV 파서 (US Amazon 매출 데이터)
 // ================================================================
-function parseBusinessReportCsv(csvText, byDate) {
+function parseBusinessReportCsv(csvText, byDate, fileMod) {
   if (csvText.charCodeAt(0) === 0xFEFF) csvText = csvText.slice(1);
   const lines = csvText.split(/\r?\n/);
   if (lines.length < 2) return;
@@ -443,6 +443,9 @@ function parseBusinessReportCsv(csvText, byDate) {
     return;
   }
 
+  // 파일 생성일 — 이 날짜 이후 행은 파일 생성 시점에 데이터가 없었음 → 스킵
+  const fileModMs = fileMod ? fileMod.getTime() : null;
+
   for (let i = 1; i < lines.length; i++) {
     const line = lines[i].trim();
     if (!line) continue;
@@ -451,6 +454,12 @@ function parseBusinessReportCsv(csvText, byDate) {
 
     const d = parseBizReportDate(row[dateIdx] ? String(row[dateIdx]).trim() : '');
     if (!d) continue;
+
+    // 파일 생성일 당일 및 이후 날짜는 미확정 데이터 — 건너뜀
+    if (fileModMs) {
+      const rowMs = new Date(d.yr, d.mo - 1, d.day).getTime();
+      if (rowMs >= fileModMs) continue;
+    }
 
     const k   = d.yr + '_' + d.mo + '_' + d.day;
     const DOW = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][new Date(d.yr, d.mo-1, d.day).getDay()];
