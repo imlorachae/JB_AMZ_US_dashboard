@@ -1154,7 +1154,7 @@ function render(){
   ['overview-section','settings-section'].forEach(id=>{const el=document.getElementById(id); if(el) el.style.display='none';});
   ['review-section','top-banner','kpi-row1','ratio-grid','charts-grid','summary-section'].forEach(id=>{const el=document.getElementById(id); if(el) el.style.display='';});
   if(appMode==='ads'){
-    if(nav) nav.style.display='none';            // 광고 모드: 매출용 네비 숨김
+    const _navSub=document.getElementById('navbar-sub-row'); if(_navSub) _navSub.style.display='none'; // 광고 모드: 연도·월 row만 숨김
     document.getElementById('daily-section').style.display='none';
     if(activeTab==='campaign') renderCampaigns();
     else if(activeTab==='adgroup') renderAdGroups();
@@ -1164,7 +1164,8 @@ function render(){
     else renderAds();
     return;
   }
-  if(nav) nav.style.display='';                    // 매출 모드: 네비 표시
+  if(nav) nav.style.display='';
+  const _navSubR=document.getElementById('navbar-sub-row'); if(_navSubR) _navSubR.style.display=''; // 매출 모드: 네비 복원
   const _kr=document.getElementById('kpi-row1'); _kr.className='kpi-grid5'; _kr.style.display='';
   const _rg=document.getElementById('ratio-grid'); _rg.className='ratio-grid'; _rg.style.display=''; _rg.style.marginBottom='';
   const _cg=document.getElementById('charts-grid'); _cg.style.gridTemplateColumns='';
