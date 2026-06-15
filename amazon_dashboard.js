@@ -27,6 +27,7 @@ let activeMonth=null, activeYear=null, activeQuarter=null;
 let activeWeekIdx=null; // null=전체, number=특정주 인덱스
 let kwSortCol='sales', kwSortDir=-1;
 let _prodSortCol='sales', _prodSortDir=-1, _cachedSgProds=null;
+let _sgActiveMo=null, _sgProdPeriod='annual', _sgProdQ=1, _sgProdMo=1;
 // ── Multi-country state ───────────────────────────────────────────
 let activeCountry='US', activeChannel='AMZ';
 const mysgCache={};
@@ -3390,17 +3391,18 @@ async function loadAndRenderMysg(country, channel) {
 }
 
 function renderMysg(cached, adsCached) {
-  // View tabs: ANNUAL/QUARTER/MONTHLY enabled; WEEKLY/DAILY disabled
+  // View tabs: ANNUAL/QUARTER/MONTHLY/PROD enabled; WEEKLY/DAILY disabled
   const nav=document.querySelector('.navbar'); if(nav) nav.style.display='';
   const tabGrp=document.getElementById('tab-group');
   if(tabGrp){
     tabGrp.style.display='';
-    const T_EN=['annual','quarter','monthly'];
+    const T_EN=['annual','quarter','monthly','prod'];
     if(!T_EN.includes(activeTab)) activeTab='monthly';
-    tabGrp.innerHTML=['annual','quarter','monthly','weekly','daily'].map(t=>{
+    const SG_TAB_LBL={annual:'ANNUAL',quarter:'QUARTER',monthly:'MONTHLY',prod:'상품매출',weekly:'WEEKLY',daily:'DAILY'};
+    tabGrp.innerHTML=['annual','quarter','monthly','prod','weekly','daily'].map(t=>{
       const en=T_EN.includes(t);
       return `<button class="tab-btn${activeTab===t?' active':''}"${en?` onclick="setTab('${t}')"`:''}
-        style="${en?'':'opacity:0.35;cursor:not-allowed;pointer-events:none'}">${t.toUpperCase()}</button>`;
+        style="${en?'':'opacity:0.35;cursor:not-allowed;pointer-events:none'}">${SG_TAB_LBL[t]||t.toUpperCase()}</button>`;
     }).join('');
   }
   const vineGrp=document.getElementById('vine-group'); if(vineGrp) vineGrp.style.display='none';
@@ -3606,15 +3608,56 @@ function renderMysg(cached, adsCached) {
       </table></div>`;
     }
 
+  // ── PROD (상품매출) ───────────────────────────────────────────────
+  } else if(activeTab==='prod'){
+    if(tb) tb.innerHTML='';
+    if(cg) cg.style.display='none';
+    const dataMos=data.map(d=>d.mo).sort((a,b)=>a-b);
+    // init sub-selectors to valid values
+    if(!dataMos.includes(_sgProdMo)) _sgProdMo=dataMos[dataMos.length-1]||1;
+    const btnBase='display:inline-block;padding:4px 12px;border-radius:6px;border:1px solid var(--border);cursor:pointer;font-size:12px;font-weight:600;margin:2px 3px;background:var(--card2);color:var(--muted)';
+    const btnAct='display:inline-block;padding:4px 12px;border-radius:6px;border:1px solid var(--accent);cursor:pointer;font-size:12px;font-weight:600;margin:2px 3px;background:var(--accent);color:#fff';
+    const periods=[{k:'annual',l:isKo()?'연간':'Annual'},{k:'quarter',l:isKo()?'분기':'Quarter'},{k:'monthly',l:isKo()?'월별':'Monthly'}];
+    let subHtml=`<div style="margin-bottom:14px">${periods.map(p=>`<button onclick="window._setSgProdPeriod('${p.k}')" style="${_sgProdPeriod===p.k?btnAct:btnBase}">${p.l}</button>`).join('')}</div>`;
+
+    if(_sgProdPeriod==='quarter'){
+      subHtml+=`<div style="margin-bottom:12px">${[1,2,3,4].map(q=>`<button onclick="window._setSgProdQ(${q})" style="${_sgProdQ===q?btnAct:btnBase}">Q${q}</button>`).join('')}</div>`;
+    } else if(_sgProdPeriod==='monthly'){
+      subHtml+=`<div style="margin-bottom:12px">${dataMos.map(m=>`<button onclick="window._setSgProdMo(${m})" style="${_sgProdMo===m?btnAct:btnBase}">${MO_LABELS[m-1]}</button>`).join('')}</div>`;
+    }
+
+    let filterMos=null;
+    if(_sgProdPeriod==='quarter'){const q=_sgProdQ;filterMos=[1+(q-1)*3,2+(q-1)*3,3+(q-1)*3];}
+    else if(_sgProdPeriod==='monthly'){filterMos=[_sgProdMo];}
+
+    const periodLabel=_sgProdPeriod==='annual'?(isKo()?'연간':'Year')
+      :_sgProdPeriod==='quarter'?`Q${_sgProdQ}`
+      :MO_LABELS[(_sgProdMo||1)-1];
+
+    if(ss){
+      ss.innerHTML=subHtml+`<div class="section-title">${isKo()?'베스트 상품':'Best Products'} · ${periodLabel}</div><div id="sg-prod-section"></div>`;
+      _prodSortCol='sales';_prodSortDir=-1;
+      _renderSgProds(cached,activeYear,toActive,filterMos);
+    }
+
   // ── MONTHLY ──────────────────────────────────────────────────────
   } else {
+    // init active month to latest with data
+    const dataMos=data.map(d=>d.mo).sort((a,b)=>a-b);
+    if(!_sgActiveMo||!dataMos.includes(_sgActiveMo)) _sgActiveMo=dataMos[dataMos.length-1]||null;
+
     if(tb) tb.innerHTML='';
     if(title) title.textContent=_chLabel+' 월별'+(hasAds?' · 매출 vs 광고비':'');
     const chartData=data.map(d=>({...d,_val:toActive(isAds?(d.adSpend||0):(d.sales||0),d.yr,d.mo),_adVal:hasAds&&adsMap[d.mo]?adsToActive(adsMap[d.mo].adSpend,d.yr,d.mo):null}));
     renderMysgChart(chartData, activeCurrency, isAds, sym, hasAds);
 
+    // Month selector sub-tabs
+    const moTabsHtml=`<div style="margin:14px 0 8px;display:flex;flex-wrap:wrap;gap:4px">
+      ${dataMos.map(m=>`<button onclick="window._setSgMonth(${m})" class="year-tab${m===_sgActiveMo?' active':''}">${MO_LABELS[m-1]}</button>`).join('')}
+    </div>`;
+
     if(ss){
-      ss.innerHTML=`<div class="section-title" style="margin-top:20px">${isKo()?'월별 상세':'Monthly Detail'}</div>
+      ss.innerHTML=moTabsHtml+`<div class="section-title" style="margin-top:8px">${MO_LABELS[(_sgActiveMo||1)-1]} ${isKo()?'상세':'Detail'}</div>
       <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:13px">
         <thead><tr style="border-bottom:2px solid var(--border)">
           <th style="text-align:left;padding:8px 12px;color:var(--muted);font-weight:600">${isKo()?'월':'Month'}</th>
@@ -3627,8 +3670,9 @@ function renderMysg(cached, adsCached) {
           const val=toActive(d.sales||0,d.yr,d.mo);
           const ads=hasAds&&adsMap[d.mo]?adsToActive(adsMap[d.mo].adSpend,d.yr,d.mo):null;
           const r=ads&&ads>0?val/ads:null;
-          return `<tr style="border-bottom:1px solid var(--border)">
-            <td style="padding:8px 12px">${MO_LABELS[d.mo-1]}</td>
+          const isSel=d.mo===_sgActiveMo;
+          return `<tr style="border-bottom:1px solid var(--border);${isSel?'background:var(--card2);outline:1px solid var(--accent);outline-offset:-1px':''}">
+            <td style="padding:8px 12px;font-weight:${isSel?700:400}">${MO_LABELS[d.mo-1]}</td>
             <td style="text-align:right;padding:8px 12px;font-weight:600">${fmtM(val)}</td>
             <td style="text-align:right;padding:8px 12px">${fmtN(d.orders||0)}</td>
             ${hasAds?`<td style="text-align:right;padding:8px 12px;color:var(--muted)">${ads!==null?fmtM(ads):'-'}</td>
@@ -3637,13 +3681,17 @@ function renderMysg(cached, adsCached) {
         }).join('')}</tbody>
       </table></div>`;
       if(cached.products&&cached.products.length){
-        ss.innerHTML+=`<div class="section-title" style="margin-top:28px">${isKo()?'베스트 상품 (연간)':'Best Products (Year)'}</div><div id="sg-prod-section"></div>`;
+        ss.innerHTML+=`<div class="section-title" style="margin-top:28px">${MO_LABELS[(_sgActiveMo||1)-1]} ${isKo()?'베스트 상품':'Best Products'}</div><div id="sg-prod-section"></div>`;
         _prodSortCol='sales';_prodSortDir=-1;
-        _renderSgProds(cached,activeYear,toActive);
+        _renderSgProds(cached,activeYear,toActive,[_sgActiveMo]);
       }
     }
   }
 }
+window._setSgMonth=function(mo){_sgActiveMo=mo;render();};
+window._setSgProdPeriod=function(p){_sgProdPeriod=p;render();};
+window._setSgProdQ=function(q){_sgProdQ=q;render();};
+window._setSgProdMo=function(m){_sgProdMo=m;render();};
 
 function _normProdName(name){
   const tags=[];
@@ -3652,7 +3700,7 @@ function _normProdName(name){
   while((m=rest.match(/^\[([^\]]+)\]\s*/))){ tags.push(m[1]); rest=rest.slice(m[0].length); }
   return {base:rest||name,tags};
 }
-function _renderSgProds(cached, yr, toActiveFn){
+function _renderSgProds(cached, yr, toActiveFn, filterMos){
   _cachedSgProds=cached;
   const container=document.getElementById('sg-prod-section');
   if(!container||!cached||!cached.products||!cached.products.length)return;
@@ -3673,18 +3721,18 @@ function _renderSgProds(cached, yr, toActiveFn){
   const si=col=>_prodSortCol===col?(_prodSortDir===-1?'▼':'▲'):'⇅';
   const thStyle='text-align:right;padding:6px 12px;color:var(--muted);font-weight:600;cursor:pointer;user-select:none;white-space:nowrap';
 
-  // Aggregate by normalized base name across all months in the year
+  // Aggregate by normalized base name; optionally filter to specific months
   const aggMap={};
-  cached.products.filter(p=>p.yr===curYr).forEach(p=>{
+  cached.products.filter(p=>p.yr===curYr&&(!filterMos||filterMos.includes(p.mo))).forEach(p=>{
     const {base,tags}=_normProdName(p.name||'');
     if(!aggMap[base]) aggMap[base]={base,tags:new Set(),qty:0,sales:0,yr:p.yr,mos:[]};
     tags.forEach(t=>aggMap[base].tags.add(t));
     aggMap[base].qty+=(p.qty||0);
-    // Convert each month's sales using its own rate
     aggMap[base].sales+=cvt(p.sales||0,p.yr,p.mo);
     if(!aggMap[base].mos.includes(p.mo)) aggMap[base].mos.push(p.mo);
   });
-  const rows=Object.values(aggMap).sort((a,b)=>_prodSortDir*((b[_prodSortCol]||0)-(a[_prodSortCol]||0)));
+  // _prodSortDir=-1 = 내림차순(매출 높은 순 ▼), =1 = 오름차순(▲)
+  const rows=Object.values(aggMap).sort((a,b)=>_prodSortDir*((a[_prodSortCol]||0)-(b[_prodSortCol]||0)));
 
   const html=`<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:13px">
     <thead><tr style="border-bottom:2px solid var(--border)">
