@@ -469,7 +469,7 @@ function renderSidebar(){
     let chItems='';
     if(isExp){
       chItems=chs.map(ch=>{
-        const chActive=isActive&&(ch.id===activeChannel||(ch.pairAds&&ch.pairAds===activeChannel));
+        const chActive=isActive&&(ch.id===activeChannel||(ch.pairAds&&ch.pairAds===activeChannel)||(ch.pairProds&&ch.pairProds===activeChannel));
         let modeItems='';
         if(chActive){
           if(c==='US'){
@@ -478,11 +478,15 @@ function renderSidebar(){
               `<button class="sidebar-mode${appMode==='ads'?' active':''}" onclick="setMode('ads')">📢 <span>${isKo()?'광고':'Ads'}</span></button>`;
             if(ch.id==='AMZ')
               modeItems+=`<button class="sidebar-mode" onclick="location.href='store_dashboard.html'">🛍 <span>${isKo()?'스토어':'Store'}</span></button>`;
-          } else if(ch.pairAds) {
+          } else if(ch.pairAds||ch.pairProds) {
             const curIsAds=activeChannel===ch.pairAds;
-            const adsLabel=CHANNEL_LABELS[ch.pairAds]||ch.pairAds;
-            modeItems+=`<button class="sidebar-mode${!curIsAds?' active':''}" onclick="setCountryChannel('${c}','${ch.id}')">💰 <span>${isKo()?'매출':'Sales'}</span></button>`;
-            modeItems+=`<button class="sidebar-mode${curIsAds?' active':''}" onclick="setCountryChannel('${c}','${ch.pairAds}')">📢 <span>${adsLabel}</span></button>`;
+            const curIsProds=activeChannel===ch.pairProds;
+            const curIsSales=!curIsAds&&!curIsProds;
+            modeItems+=`<button class="sidebar-mode${curIsSales?' active':''}" onclick="setCountryChannel('${c}','${ch.id}')">💰 <span>${isKo()?'매출':'Sales'}</span></button>`;
+            if(ch.pairProds)
+              modeItems+=`<button class="sidebar-mode${curIsProds?' active':''}" onclick="setCountryChannel('${c}','${ch.pairProds}')">📦 <span>${CHANNEL_LABELS[ch.pairProds]||'상품매출'}</span></button>`;
+            if(ch.pairAds)
+              modeItems+=`<button class="sidebar-mode${curIsAds?' active':''}" onclick="setCountryChannel('${c}','${ch.pairAds}')">📢 <span>${CHANNEL_LABELS[ch.pairAds]||ch.pairAds}</span></button>`;
           }
         }
         return `<button class="sidebar-channel${chActive?' active':''}" onclick="setCountryChannel('${c}','${ch.id}')">${ch.label}</button>${modeItems}`;
@@ -1151,9 +1155,11 @@ function render(){
     return;
   }
   if(activeCountry!=='US'){
-    const _chDef=(COUNTRY_CHANNELS[activeCountry]||[]).find(c=>c.id===activeChannel);
+    // SGProds is a sidebar view of Shopify product data — use Shopify cache
+    const _srcChannel=activeChannel==='SGProds'?'Shopify':activeChannel;
+    const _chDef=(COUNTRY_CHANNELS[activeCountry]||[]).find(c=>c.id===_srcChannel);
     const _pairId=_chDef&&_chDef.pairAds;
-    renderMysg(mysgCache[activeCountry+'_'+activeChannel], _pairId?mysgCache[activeCountry+'_'+_pairId]:null);
+    renderMysg(mysgCache[activeCountry+'_'+_srcChannel], _pairId?mysgCache[activeCountry+'_'+_pairId]:null);
     return;
   }
   // US 진입 시 SG/MY/UAE가 숨긴 요소 복원
@@ -3279,7 +3285,7 @@ window.addEventListener('DOMContentLoaded', () => {
 
 // ──── MULTI-COUNTRY / CHANNEL ─────────────────────────────────────
 const COUNTRY_CHANNELS = {
-  SG:  [{id:'Shopify',label:'Shopify',pairAds:'FBAds'},
+  SG:  [{id:'Shopify',label:'Shopify',pairAds:'FBAds',pairProds:'SGProds'},
         {id:'Shopee',label:'Shopee'},
         {id:'TikTok',label:'TikTok'}],
   MY:  [{id:'Shopify',label:'Shopify'},{id:'Shopee',label:'Shopee'},
@@ -3290,6 +3296,7 @@ const COUNTRY_CHANNELS = {
 const CHANNEL_LABELS = {
   AMZ:'Amazon',Shopify:'Shopify',Shopee:'Shopee',
   TikTok:'TikTok Shop',TikTokAds:'TikTok Ads',FBAds:'FB Ads',
+  SGProds:'상품매출',
 };
 const MO_LABELS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
@@ -3380,30 +3387,36 @@ async function loadAndRenderMysg(country, channel) {
   if(kr) kr.innerHTML='<div style="color:var(--muted);font-size:13px;padding:20px 0">Loading...</div>';
   const cg=document.getElementById('charts-grid'); if(cg) cg.style.display='none';
 
-  // Also load paired ads channel if defined
-  const chDef=(COUNTRY_CHANNELS[country]||[]).find(c=>c.id===channel);
+  // SGProds is a sidebar view of Shopify product data
+  const srcChannel=channel==='SGProds'?'Shopify':channel;
+  const chDef=(COUNTRY_CHANNELS[country]||[]).find(c=>c.id===srcChannel);
   const pairAdsId=chDef&&chDef.pairAds;
   const [cached, adsCached]=await Promise.all([
-    syncCountryData(country, channel),
+    syncCountryData(country, srcChannel),
     pairAdsId?syncCountryData(country, pairAdsId):Promise.resolve(null)
   ]);
   renderMysg(cached, adsCached);
 }
 
 function renderMysg(cached, adsCached) {
-  // View tabs: ANNUAL/QUARTER/MONTHLY/PROD enabled; WEEKLY/DAILY disabled
+  // SGProds (상품매출) is a sidebar-driven view — force prod branch, hide tabs
+  const isProdView=activeChannel==='SGProds';
+
   const nav=document.querySelector('.navbar'); if(nav) nav.style.display='';
   const tabGrp=document.getElementById('tab-group');
   if(tabGrp){
-    tabGrp.style.display='';
-    const T_EN=['annual','quarter','monthly','prod'];
-    if(!T_EN.includes(activeTab)) activeTab='monthly';
-    const SG_TAB_LBL={annual:'ANNUAL',quarter:'QUARTER',monthly:'MONTHLY',prod:'상품매출',weekly:'WEEKLY',daily:'DAILY'};
-    tabGrp.innerHTML=['annual','quarter','monthly','prod','weekly','daily'].map(t=>{
-      const en=T_EN.includes(t);
-      return `<button class="tab-btn${activeTab===t?' active':''}"${en?` onclick="setTab('${t}')"`:''}
-        style="${en?'':'opacity:0.35;cursor:not-allowed;pointer-events:none'}">${SG_TAB_LBL[t]||t.toUpperCase()}</button>`;
-    }).join('');
+    if(isProdView){
+      tabGrp.style.display='none';
+    } else {
+      tabGrp.style.display='';
+      const T_EN=['annual','quarter','monthly'];
+      if(!T_EN.includes(activeTab)) activeTab='monthly';
+      tabGrp.innerHTML=['annual','quarter','monthly','weekly','daily'].map(t=>{
+        const en=T_EN.includes(t);
+        return `<button class="tab-btn${activeTab===t?' active':''}"${en?` onclick="setTab('${t}')"`:''}
+          style="${en?'':'opacity:0.35;cursor:not-allowed;pointer-events:none'}">${t.toUpperCase()}</button>`;
+      }).join('');
+    }
   }
   const vineGrp=document.getElementById('vine-group'); if(vineGrp) vineGrp.style.display='none';
   const unitTbs=document.getElementById('unit-tabs'); if(unitTbs) unitTbs.style.display='none';
@@ -3608,8 +3621,8 @@ function renderMysg(cached, adsCached) {
       </table></div>`;
     }
 
-  // ── PROD (상품매출) ───────────────────────────────────────────────
-  } else if(activeTab==='prod'){
+  // ── PROD (상품매출) — sidebar SGProds 또는 prod 탭 ────────────────
+  } else if(isProdView||activeTab==='prod'){
     if(tb) tb.innerHTML='';
     if(cg) cg.style.display='none';
     const dataMos=data.map(d=>d.mo).sort((a,b)=>a-b);
